@@ -12,14 +12,13 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.release>24</maven.compiler.release>
+        <maven.compiler.release>21</maven.compiler.release>
         <exec.mainClass>org.appsentinel.AppSentinel</exec.mainClass>
         <javafx.version>21.0.3</javafx.version>
     </properties>
 
     <dependencies>
-
-        <!-- 1. JavaFX -->
+        <!-- 1. JavaFX (Base + FXML + Web para informes en tiempo real) -->
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
@@ -30,15 +29,20 @@
             <artifactId>javafx-fxml</artifactId>
             <version>${javafx.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.openjfx</groupId>
+            <artifactId>javafx-web</artifactId>
+            <version>${javafx.version}</version>
+        </dependency>
 
-        <!-- 2. OSHI -->
+        <!-- 2. OSHI: Escaneo de hardware y procesos -->
         <dependency>
             <groupId>com.github.oshi</groupId>
             <artifactId>oshi-core</artifactId>
             <version>6.6.1</version>
         </dependency>
 
-        <!-- 3. JNA -->
+        <!-- 3. JNA: Ventana activa -->
         <dependency>
             <groupId>net.java.dev.jna</groupId>
             <artifactId>jna</artifactId>
@@ -50,43 +54,49 @@
             <version>5.14.0</version>
         </dependency>
 
-        <!-- 4. Java-WebSocket -->
+        <!-- 4. Java-WebSocket: Comunicación con extensión navegador -->
         <dependency>
             <groupId>org.java-websocket</groupId>
             <artifactId>Java-WebSocket</artifactId>
             <version>1.5.6</version>
         </dependency>
 
-        <!-- 5. SQLite-JDBC -->
+        <!-- 5. PostgreSQL JDBC: Driver para Supabase o base de datos externa -->
         <dependency>
-            <groupId>org.xerial</groupId>
-            <artifactId>sqlite-jdbc</artifactId>
-            <version>3.45.3.0</version>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.3</version>
         </dependency>
 
-        <!-- 6. Jackson -->
+        <!-- 6. Jackson: Procesar JSON -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>2.17.1</version>
         </dependency>
 
+        <!-- 7. Lombok: Reducción de código boilerplate -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.30</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <plugins>
-
             <!-- Compilador -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <release>24</release>
+                    <release>21</release>
                 </configuration>
             </plugin>
 
-            <!-- Lanzador JavaFX: mvn javafx:run -->
+            <!-- Lanzador JavaFX -->
             <plugin>
                 <groupId>org.openjfx</groupId>
                 <artifactId>javafx-maven-plugin</artifactId>
@@ -96,7 +106,7 @@
                 </configuration>
             </plugin>
 
-            <!-- JAR ejecutable: mvn package -->
+            <!-- JAR ejecutable (Fat JAR) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
@@ -107,8 +117,7 @@
                         <goals><goal>shade</goal></goals>
                         <configuration>
                             <transformers>
-                                <transformer implementation=
-                                "org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>org.appsentinel.AppSentinel</mainClass>
                                 </transformer>
                             </transformers>
@@ -116,8 +125,7 @@
                     </execution>
                 </executions>
             </plugin>
-
         </plugins>
     </build>
-
 </project>
+o

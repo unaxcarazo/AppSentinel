@@ -427,3 +427,38 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# --- NetBeans Específico ---
+nbproject/private/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+build/
+
+# --- Maven ---
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.restore
+release.properties
+
+# --- Base de Datos (SQLite) ---
+# Importante: No subir tu base de datos local con tus registros de uso
+*.db
+*.db-journal
+
+# --- Archivos de registro (Logs) ---
+*.log
+
+# --- Otros IDEs (por si acaso) ---
+.idea/
+.vscode/
+.settings/
+.project
+.classpath
+
+# --- Sistema Operativo ---
+.DS_Store
+Thumbs.db

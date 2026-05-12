@@ -427,3 +427,32 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# --- MAVEN (Archivos de compilación) ---
+target/
+*.jar
+*.war
+*.ear
+
+# --- NETBEANS ---
+nbproject/private/
+build/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+
+# --- INTELIJ / ECLIPSE (Por si algún compañero usa otro IDE) ---
+.idea/
+*.iml
+.settings/
+.classpath
+.project
+.factorypath
+
+# --- SISTEMA OPERATIVO ---
+Thumbs.db
+desktop.ini
+.DS_Store
+*.log
+

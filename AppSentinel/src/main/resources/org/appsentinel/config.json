@@ -1,0 +1,23 @@
+{
+  "listaBlanca": [
+    "code", "idea", "eclipse", "netbeans", "terminal", "cmd", "powershell",
+    "putty", "git", "github desktop", "notepad++", "sublime_text",
+    "intellij", "pycharm", "webstorm", "datagrip", "postman", "docker desktop",
+    "excel", "word", "powerpoint", "teams", "slack", "zoom", "obsidian",
+    "notion", "todoist", "trello", "jira", "confluence", "figma"
+  ],
+  "listaNegra": [
+    "steam", "epicgames", "spotify", "vlc", "netflix", "discord", "twitch",
+    "facebook", "instagram", "twitter", "x.com", "tiktok", "youtube",
+    "reddit", "pinterest", "snapchat", "whatsapp", "telegram", "messenger",
+    "9gag", "chess", "solitaire", "minesweeper"
+  ],
+  "urlsNegras": [
+    "facebook.com", "instagram.com", "twitter.com", "x.com", "tiktok.com",
+    "youtube.com", "reddit.com", "pinterest.com", "snapchat.com",
+    "netflix.com", "twitch.tv", "discord.com", "9gag.com"
+  ],
+  "tiempoLimiteSegundos": 300
+    
+    
+}

@@ -1,25 +1,23 @@
-// ============================================
-// org.appsentinel.domain.port.out.NotificacionPort
-// ============================================
 package org.appsentinel.domain.port.out;
 
 /**
- * Puerto de salida para alertas visuales.
- * El dominio decide CUÁNDO alertar, JavaFXAlertAdapter decide CÓMO.
+ * Puerto de salida para alertas visuales y notificaciones de novedades.
  */
 public interface NotificacionPort {
     
-    /**
-     * Muestra una alerta de distracción detectada.
-     * @param mensaje Texto descriptivo
-     * @param nombreApp Nombre de la aplicación distractora
+    /*
+     * Alerta suave: distracción detectada (Nivel 1).
      */
     void mostrarAlertaDistraccion(String mensaje, String nombreApp);
     
-    /**
-     * Muestra una alerta de bloqueo (cuando se supera el tiempo límite).
-     * @param nombreApp App que será bloqueada
-     * @param tiempoExcedido Segundos que estuvo abierta
+    /*
+     * Alerta fuerte: bloqueo de sesión o cierre (Nivel 2/3).
      */
     void mostrarAlertaBloqueo(String nombreApp, long tiempoExcedido);
+    
+    /*
+     * Novedad: nueva app detectada sin clasificar.
+     * La UI debe mostrarla en BlacklistView para que el usuario decida.
+     */
+    void notificarAppSinClasificar(String nombreApp, String detalle);
 }

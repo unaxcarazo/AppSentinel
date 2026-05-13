@@ -2,20 +2,27 @@ package org.appsentinel.infrastructure.adapter.out;
 
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
-import org.appsentinel.infrastructure.db.DatabaseConnection;
+import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * PostgreSQLRepositoryAdapter: Implementa el puerto de persistencia.
- * Traduce objetos Registro a sentencias SQL y viceversa.
+ * PostgreSQLRepositoryAdapter: Adaptador de SALIDA para la persistencia del historial.
+ * 
+ * Registra y extrae las métricas de consumo de tiempo acumuladas en los hilos del dominio.
  */
 public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     
+    private static final Logger LOGGER = Logger.getLogger(PostgreSQLRepositoryAdapter.class.getName());
+    
     @Override
     public void guardar(Registro registro) {
+        if (registro == null) return;
+
         String sql = """
             INSERT INTO registros_actividad 
             (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
@@ -34,17 +41,17 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             
             stmt.executeUpdate();
             
-            // Recupera el ID autogenerado
             try (ResultSet rs = stmt.getGeneratedKeys()) {
                 if (rs.next()) {
                     registro.setId(rs.getLong(1));
                 }
             }
             
-            System.out.println("Registro guardado: " + registro.getNombreActividad());
+            LOGGER.log(Level.INFO, "[PERSISTENCIA] Registro guardado en PostgreSQL: {0} ({1}s)", 
+                new Object[]{registro.getNombreActividad(), registro.getDuracionSeg()});
             
         } catch (SQLException e) {
-            System.err.println("Error al guardar registro: " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo crítico al insertar registro de actividad en la base de datos", e);
         }
     }
     
@@ -52,7 +59,8 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     public List<Registro> obtenerTodosHoy(String usuario) {
         List<Registro> registros = new ArrayList<>();
         String sql = """
-            SELECT * FROM registros_actividad 
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+            FROM registros_actividad 
             WHERE usuario_sistema = ? 
             AND DATE(fecha_registro) = CURRENT_DATE
             ORDER BY fecha_registro DESC
@@ -62,14 +70,14 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             
             stmt.setString(1, usuario);
-            ResultSet rs = stmt.executeQuery();
-            
-            while (rs.next()) {
-                registros.add(mapearRegistro(rs));
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(mapearRegistro(rs));
+                }
             }
             
         } catch (SQLException e) {
-            System.err.println("Error al leer registros: " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al extraer el historial diario de actividad de la BD", e);
         }
         
         return registros;
@@ -79,7 +87,8 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     public List<Registro> obtenerPorCategoria(String usuario, String categoria) {
         List<Registro> registros = new ArrayList<>();
         String sql = """
-            SELECT * FROM registros_actividad 
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+            FROM registros_actividad 
             WHERE usuario_sistema = ? AND categoria = ?
             AND DATE(fecha_registro) = CURRENT_DATE
             ORDER BY duracion_seg DESC
@@ -90,31 +99,32 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             
             stmt.setString(1, usuario);
             stmt.setString(2, categoria);
-            ResultSet rs = stmt.executeQuery();
-            
-            while (rs.next()) {
-                registros.add(mapearRegistro(rs));
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(mapearRegistro(rs));
+                }
             }
             
         } catch (SQLException e) {
-            System.err.println("Error al filtrar registros: " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al filtrar registros por categoría en PostgreSQL", e);
         }
         
         return registros;
     }
     
     /**
-     * Mapea un ResultSet a un objeto Registro.
+     * Mapeo tradicional mediante instanciación estándar y setters.
+     * 
      */
     private Registro mapearRegistro(ResultSet rs) throws SQLException {
-        return Registro.builder()
-            .id(rs.getLong("id"))
-            .usuarioSistema(rs.getString("usuario_sistema"))
-            .nombreActividad(rs.getString("nombre_actividad"))
-            .categoria(rs.getString("categoria"))
-            .detalle(rs.getString("detalle"))
-            .duracionSeg(rs.getLong("duracion_seg"))
-            .fechaRegistro(rs.getTimestamp("fecha_registro").toLocalDateTime())
-            .build();
+        Registro reg = new Registro();
+        reg.setId(rs.getLong("id"));
+        reg.setUsuarioSistema(rs.getString("usuario_sistema"));
+        reg.setNombreActividad(rs.getString("nombre_actividad"));
+        reg.setCategoria(rs.getString("categoria"));
+        reg.setDetalle(rs.getString("detalle"));
+        reg.setDuracionSeg(rs.getLong("duracion_seg"));
+        reg.setFechaRegistro(rs.getTimestamp("fecha_registro").toLocalDateTime());
+        return reg;
     }
 }

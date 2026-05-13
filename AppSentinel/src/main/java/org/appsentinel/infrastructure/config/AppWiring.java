@@ -7,7 +7,7 @@ import org.appsentinel.infrastructure.adapter.out.JavaFXAlertAdapter;
 import org.appsentinel.infrastructure.adapter.out.PostgreSQLCategoriaAdapter;
 import org.appsentinel.infrastructure.adapter.out.PostgreSQLRepositoryAdapter;
 import org.appsentinel.infrastructure.adapter.out.ProcessKillerAdapter;
-import org.appsentinel.infrastructure.adapter.out.ProcessMonitorAdapter;
+import org.appsentinel.infrastructure.adapter.in.ProcessMonitorAdapter;
 
 public class AppWiring {
 

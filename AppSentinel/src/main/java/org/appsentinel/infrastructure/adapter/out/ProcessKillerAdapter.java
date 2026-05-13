@@ -2,91 +2,133 @@ package org.appsentinel.infrastructure.adapter.out;
 
 import org.appsentinel.domain.port.out.BrowserCommandPort;
 import org.appsentinel.domain.port.out.KillerPort;
-
-import java.util.Optional;
+import java.util.List;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * ProcessKillerAdapter: Cierra procesos de escritorio con ProcessHandle
- * y pestañas del navegador a través de BrowserCommandPort.
- *
- * No conoce WebSocketAdapter — solo conoce el puerto.
+ * ProcessKillerAdapter: Adaptador de SALIDA.
+ * 
+ * Cierra procesos de escritorio via ProcessHandle (multiplataforma).
+ * Protege procesos críticos del sistema y la propia JVM.
+ * 
+ * Analogía: como PostgreSQLRepositoryAdapter guarda datos,
+ * este adaptador "guarda" (aplica) cambios en el sistema operativo.
  */
 public class ProcessKillerAdapter implements KillerPort {
 
-    private static final Logger LOGGER =
-            Logger.getLogger(ProcessKillerAdapter.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(ProcessKillerAdapter.class.getName());
 
-    // Puerto de salida — inyectado desde AppWiring
+    // Procesos que NUNCA se deben cerrar
+    private static final Set<String> PROCESOS_PROTEGIDOS = Set.of(
+        "csrss", "smss", "lsass", "services", "svchost", "winlogon",
+        "wininit", "system", "registry", "memory compression",
+        "explorer", "taskmgr", "java", "javaw", "idea", "netbeans"
+    );
+
     private final BrowserCommandPort browserCommand;
 
     public ProcessKillerAdapter(BrowserCommandPort browserCommand) {
         this.browserCommand = browserCommand;
     }
 
-    // ── Cierre de procesos de escritorio ─────────────────────────
-
     @Override
     public boolean cerrarProceso(String nombreProceso) {
-        LOGGER.log(Level.INFO, "Solicitando cierre: {0}", nombreProceso);
+        if (nombreProceso == null || nombreProceso.isBlank()) {
+            LOGGER.log(Level.WARNING, "[KILL] Nombre de proceso nulo o vacio");
+            return false;
+        }
 
-        boolean algunoCerrado = false;
-        String busqueda = nombreProceso.toLowerCase().replace(".exe", "");
+        String busqueda = nombreProceso.toLowerCase().replace(".exe", "").trim();
 
-        for (ProcessHandle ph : ProcessHandle.allProcesses().toList()) {
-            Optional<String> cmdOpt = ph.info().command();
+        // Proteccion: nunca cerrar procesos del sistema
+        if (PROCESOS_PROTEGIDOS.contains(busqueda)) {
+            LOGGER.log(Level.WARNING, "[KILL] Bloqueado intento de cerrar proceso protegido: {0}", nombreProceso);
+            return false;
+        }
 
-            if (cmdOpt.isPresent()) {
-                String nombreExe = extraerNombre(cmdOpt.get());
+        LOGGER.log(Level.INFO, "[KILL] Solicitando cierre para: {0}", nombreProceso);
 
-                if (nombreExe.contains(busqueda) || busqueda.contains(nombreExe)) {
-                    boolean cerrado = ph.destroyForcibly();
+        // Recolectar candidatos primero (sin efectos secundarios en stream)
+        List<ProcessHandle> candidatos = ProcessHandle.allProcesses()
+            .filter(ProcessHandle::isAlive)
+            .filter(ph -> ph.info().command().isPresent())
+            .filter(ph -> {
+                String nombreExe = extraerNombre(ph.info().command().get());
+                return nombreExe.contains(busqueda) || busqueda.contains(nombreExe);
+            })
+            .toList();
 
-                    if (cerrado) {
-                        LOGGER.log(Level.INFO, "Cerrado PID {0}: {1}",
-                            new Object[]{ph.pid(), nombreExe});
-                        algunoCerrado = true;
-                    } else {
-                        LOGGER.log(Level.WARNING,
-                            "No se pudo cerrar PID {0}", ph.pid());
-                    }
-                }
+        // Cerrar fuera del stream (efectos secundarios explicitos)
+        int cerrados = 0;
+        for (ProcessHandle ph : candidatos) {
+            if (cerrarProcesoIndividual(ph)) {
+                cerrados++;
             }
         }
 
-        if (!algunoCerrado) {
-            LOGGER.log(Level.WARNING,
-                "No se encontró ningún proceso con nombre: {0}", nombreProceso);
+        if (cerrados == 0) {
+            LOGGER.log(Level.WARNING, "[KILL] No se encontro proceso activo para: {0}", nombreProceso);
         }
 
-        return algunoCerrado;
+        return cerrados > 0;
     }
 
-    // ── Cierre de pestañas del navegador ─────────────────────────
+    /**
+     * Cierra un proceso individual con graceful -> forzoso.
+     */
+    private boolean cerrarProcesoIndividual(ProcessHandle ph) {
+        try {
+            // Paso 1: Cierre ordenado (graceful)
+            boolean cerrado = ph.destroy();
+            if (cerrado && esperarCierre(ph, 2)) {
+                LOGGER.log(Level.FINE, "[KILL] Cerrado graceful PID {0}", ph.pid());
+                return true;
+            }
+
+            // Paso 2: Escalado a cierre forzoso
+            cerrado = ph.destroyForcibly();
+            if (cerrado) {
+                LOGGER.log(Level.INFO, "[KILL] Cerrado forzoso PID {0}", ph.pid());
+                return true;
+            }
+
+            LOGGER.log(Level.WARNING, "[KILL] No se pudo cerrar PID {0}", ph.pid());
+            return false;
+
+        } catch (SecurityException e) {
+            LOGGER.log(Level.WARNING, "[KILL] Permisos insuficientes para PID {0} (requiere Administrador)", ph.pid());
+            return false;
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "[KILL] Error inesperado cerrando PID {0}", ph.pid());
+            return false;
+        }
+    }
 
     @Override
     public void cerrarPestanaNavegador(int tabId) {
         if (browserCommand == null) {
-            LOGGER.log(Level.SEVERE,
-                "BrowserCommandPort no configurado — no se puede cerrar pestaña");
+            LOGGER.log(Level.SEVERE, "[KILL] BrowserCommandPort no configurado");
             return;
         }
         browserCommand.cerrarPestaña(tabId);
     }
 
-    // ── Utilidad ─────────────────────────────────────────────────
+    private boolean esperarCierre(ProcessHandle ph, int segundos) {
+        try {
+            return ph.onExit().get(segundos, java.util.concurrent.TimeUnit.SECONDS) != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
-    /**
-     * Extrae el nombre del ejecutable de una ruta completa.
-     * "C:\Program Files\Chrome\chrome.exe" → "chrome"
-     * "/usr/bin/firefox"                   → "firefox"
-     */
     private String extraerNombre(String ruta) {
-        String sep = ruta.contains("\\") ? "\\\\" : "/";
-        String[] partes = ruta.split(sep);
+        if (ruta == null || ruta.isBlank()) return "desconocido";
+        String limpia = ruta.replace("\"", "").trim();
+        String sep = limpia.contains("\\") ? "\\\\" : "/";
+        String[] partes = limpia.split(sep);
         String nombre = partes[partes.length - 1].toLowerCase();
-
         int punto = nombre.lastIndexOf('.');
         return punto > 0 ? nombre.substring(0, punto) : nombre;
     }

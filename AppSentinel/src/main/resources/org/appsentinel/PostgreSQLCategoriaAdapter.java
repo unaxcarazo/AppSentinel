@@ -1,4 +1,5 @@
-package org.appsentinel.infrastructure.adapter.out;
+package org.appsentinel;
+
 
 import org.appsentinel.domain.model.Categoria;
 import org.appsentinel.domain.port.out.CategoriaRepositoryPort;

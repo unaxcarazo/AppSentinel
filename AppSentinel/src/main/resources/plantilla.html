@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>AppSentinel - Resumen de Actividad</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f9; color: #333; margin: 0; padding: 20px; }
+        .header { background: #0d1117; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; text-align: center; }
+        .container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        
+        /* Tarjetas de actividad */
+        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-left: 8px solid #ccc; }
+        .card.work { border-left-color: #00d2ff; } /* Color Trabajo */
+        .card.distraction { border-left-color: #ff5c00; } /* Color Distracción */
+        
+        .card h3 { margin-top: 0; color: #0d1117; }
+        .info { font-size: 0.9em; color: #666; }
+        .duration { font-size: 1.2em; font-weight: bold; color: #222; margin-top: 10px; }
+        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; text-transform: uppercase; }
+        .badge-work { background: #e0f7fa; color: #00838f; }
+        .badge-distraction { background: #fff3e0; color: #e65100; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>AppSentinel Report</h1>
+        <p>Resumen diario de productividad - 13 de Mayo, 2026</p>
+    </div>
+
+    <div class="container">
+        <div class="card work">
+            <span class="badge badge-work">Trabajo</span>
+            <h3>IntelliJ IDEA</h3>
+            <p class="info">Última actividad: 10:15 AM</p>
+            <div class="duration">04h 12m</div>
+        </div>
+
+        <div class="card distraction">
+            <span class="badge badge-distraction">Distracción</span>
+            <h3>Twitter (X)</h3>
+            <p class="info">Última actividad: 09:45 AM</p>
+            <div class="duration">00h 45m</div>
+        </div>
+
+        <div class="card">
+            <span class="badge">Neutral</span>
+            <h3>Explorador de archivos</h3>
+            <p class="info">Última actividad: 11:30 AM</p>
+            <div class="duration">00h 12m</div>
+        </div>
+    </div>
+</body>
+</html>

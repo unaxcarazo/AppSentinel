@@ -9,40 +9,61 @@ import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 import org.appsentinel.domain.service.TimeTrackingService;
 
 import java.io.IOException;
+import javafx.event.ActionEvent;
+import javafx.scene.Node;
 
 public class MainController {
 
-    @FXML private AnchorPane contenedor;
+    @FXML
+    private AnchorPane contenedor;
 
     // Dependencias que vienen de AppWiring via AppSentinel
-    private TimeTrackingService     tracking;
-    private RegistroRepositoryPort  repositorio;
+    private TimeTrackingService tracking;
+    private RegistroRepositoryPort repositorio;
     private CategoriaRepositoryPort categorias;
 
     /**
-     * AppSentinel llama esto justo después de cargar main.fxml.
-     * Inyecta las dependencias y carga la vista por defecto.
+     * AppSentinel llama esto justo después de cargar main.fxml. Inyecta las
+     * dependencias y carga la vista por defecto.
      */
     public void init(TimeTrackingService tracking,
-                     RegistroRepositoryPort repositorio,
-                     CategoriaRepositoryPort categorias) {
-        this.tracking    = tracking;
+            RegistroRepositoryPort repositorio,
+            CategoriaRepositoryPort categorias) {
+        this.tracking = tracking;
         this.repositorio = repositorio;
-        this.categorias  = categorias;
+        this.categorias = categorias;
         onDashboard(); // vista por defecto al arrancar
     }
 
-    @FXML public void onDashboard()   { cargarVista("dashboard"); }
-    @FXML public void onAppBlocker()  { cargarVista("appblocker"); }
-    @FXML public void onPerformance() { cargarVista("performance"); }
-    @FXML public void onHistory()     { cargarVista("usagehistory"); }
-    @FXML public void onDeepFocus()   { /* lógica modo focus */ }
+    @FXML
+    public void onDashboard() {
+        cargarVista("dashboard");
+    }
+
+    @FXML
+    public void onAppBlocker() {
+        cargarVista("appblocker");
+    }
+
+    @FXML
+    public void onPerformance() {
+        cargarVista("performance");
+    }
+
+    @FXML
+    public void onHistory() {
+        cargarVista("usagehistory");
+    }
+
+    @FXML
+    public void onDeepFocus() {
+        /* lógica modo focus */ }
 
     private void cargarVista(String nombre) {
         try {
             FXMLLoader loader = new FXMLLoader(
-                getClass().getResource(
-                    "/org/appsentinel/fxml/" + nombre + ".fxml"));
+                    getClass().getResource(
+                            "/org/appsentinel/fxml/" + nombre + ".fxml"));
             Parent vista = loader.load();
 
             // Inyectar dependencias al controlador de la vista
@@ -68,6 +89,26 @@ public class MainController {
         } catch (IOException e) {
             System.err.println("Error cargando vista: " + nombre);
             e.printStackTrace();
+        }
+    }
+
+    @FXML
+    private void onDashboard(ActionEvent event) {
+        try {
+            // Cargamos tu vista desde la ruta de recursos
+            Node vistaDashboard = FXMLLoader.load(getClass().getResource("/org/appsentinel/infrastructure/adapter/in/gui/views/Dashboard.fxml"));
+
+            // Limpiamos lo que haya en el centro y ponemos tu Dashboard
+            contenedor.getChildren().setAll(vistaDashboard);
+
+            // Ajustamos para que tu Dashboard ocupe todo el AnchorPane
+            AnchorPane.setTopAnchor(vistaDashboard, 0.0);
+            AnchorPane.setBottomAnchor(vistaDashboard, 0.0);
+            AnchorPane.setLeftAnchor(vistaDashboard, 0.0);
+            AnchorPane.setRightAnchor(vistaDashboard, 0.0);
+
+        } catch (IOException e) {
+            System.err.println("Error al cargar el Dashboard: " + e.getMessage());
         }
     }
 }

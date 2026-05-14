@@ -104,7 +104,7 @@
         <HBox spacing="20" prefHeight="300">
             <VBox styleClass="ranking-section" HBox.hgrow="ALWAYS">
                 <Label text="TOP 5 WORK APPS" styleClass="section-header-small"/>
-                <VBox spacing="10" styleClass="ranking-container">
+                <VBox fx:id="vboxTopWork" spacing="10" styleClass="ranking-container">
                     <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
                         <Label text="#1" styleClass="ranking-pos"/>
                         <VBox spacing="5" HBox.hgrow="ALWAYS">
@@ -203,7 +203,7 @@
             <!-- DISTRACCIONES -->
             <VBox styleClass="ranking-section" HBox.hgrow="ALWAYS">
                 <Label text="TOP 5 DISTRACTIONS" styleClass="section-header-small, text-naranja"/>
-                <VBox spacing="10" styleClass="ranking-container">
+                <VBox fx:id="vboxTopDistractions" spacing="10" styleClass="ranking-container">
                     <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
                         <Label text="#1" styleClass="ranking-pos"/>
                         <VBox spacing="5" HBox.hgrow="ALWAYS">
@@ -298,10 +298,12 @@
         </HBox>
         
         <!-- Tablas resumen -->
+        
+        <!-- Actividad reciente -->
         <HBox spacing="20" VBox.vgrow="ALWAYS" style="-fx-padding: 10 0 0 0;">
             <VBox styleClass="card-base" HBox.hgrow="ALWAYS">
                 <Label text="RECENT ACTIVITY LOG" styleClass="section-header-small"/>
-                <VBox spacing="15" style="-fx-padding: 10 0 0 0;">
+                <VBox fx:id="vboxActivityLog" spacing="15" style="-fx-padding: 10 0 0 0;">
                     <HBox alignment="CENTER_LEFT" spacing="15">
                         <StackPane styleClass="icon-box, icon-box-cian">
                             <Label text="💻" style="-fx-font-size: 14;"/>
@@ -313,6 +315,7 @@
                         <Region HBox.hgrow="ALWAYS" />
                         <Label text="45m" styleClass="log-duration"/>
                     </HBox>
+                    
                     <HBox alignment="CENTER_LEFT" spacing="15">
                         <StackPane styleClass="icon-box, icon-box-naranja">
                             <Label text="🌐" style="-fx-font-size: 14;"/>
@@ -324,15 +327,41 @@
                         <Region HBox.hgrow="ALWAYS" />
                         <Label text="12m" styleClass="log-duration"/>
                     </HBox>
+                    
+                    <HBox alignment="CENTER_LEFT" spacing="15">
+                        <StackPane styleClass="icon-box, icon-box-cian">
+                            <Label text="🎨" style="-fx-font-size: 14;"/>
+                        </StackPane>
+                        <VBox>
+                            <Label text="Figma" styleClass="log-app-title"/>
+                            <Label text="Started: 11:30" styleClass="log-subtext"/>
+                        </VBox>
+                        <Region HBox.hgrow="ALWAYS" />
+                        <Label text="1h 20m" styleClass="log-duration"/>
+                    </HBox>
+                    
+                    <HBox alignment="CENTER_LEFT" spacing="15">
+                        <StackPane styleClass="icon-box, icon-box-naranja">
+                            <Label text="🎧" style="-fx-font-size: 14;"/>
+                        </StackPane>
+                        <VBox>
+                            <Label text="Discord" styleClass="log-app-title"/>
+                            <Label text="Started: 11:15" styleClass="log-subtext"/>
+                        </VBox>
+                        <Region HBox.hgrow="ALWAYS" />
+                        <Label text="5m" styleClass="log-duration"/>
+                    </HBox>
                 </VBox>
             </VBox>
 
+            <!-- Aplicaciones bloqueadas -->
+            
             <VBox styleClass="card-base" prefWidth="399">
                 <Label text="BLOCKING LOG" styleClass="section-header-small"/>
-                <VBox spacing="15" style="-fx-padding: 10 0 0 0;">
+                <VBox fx:id="vboxBlockingLog" spacing="15" style="-fx-padding: 10 0 0 0;">
                     <HBox alignment="CENTER_LEFT" spacing="15">
                         <StackPane styleClass="icon-box, icon-box-naranja">
-                            <Label text="🛡" style="-fx-font-size: 14;"/>
+                            <Label text="🚫" style="-fx-font-size: 14;"/>
                         </StackPane>
                         <VBox>
                             <Label text="Instagram" styleClass="log-app-title"/>
@@ -343,11 +372,22 @@
                     </HBox>
                     <HBox alignment="CENTER_LEFT" spacing="15">
                         <StackPane styleClass="icon-box, icon-box-naranja">
-                            <Label text="🛡" style="-fx-font-size: 14;"/>
+                            <Label text="🚫" style="-fx-font-size: 14;"/>
                         </StackPane>
                         <VBox>
                             <Label text="YouTube" styleClass="log-app-title"/>
                             <Label text="Blocked attempt at 12:15" styleClass="log-subtext"/>
+                        </VBox>
+                        <Region HBox.hgrow="ALWAYS" />
+                        <Label text="BLOCKED" styleClass="badge-blocked"/>
+                    </HBox>
+                    <HBox alignment="CENTER_LEFT" spacing="15">
+                        <StackPane styleClass="icon-box, icon-box-naranja">
+                            <Label text="🚫" style="-fx-font-size: 14;"/>
+                        </StackPane>
+                        <VBox>
+                            <Label text="Reddit" styleClass="log-app-title"/>
+                            <Label text="Blocked attempt at 10:00" styleClass="log-subtext"/>
                         </VBox>
                         <Region HBox.hgrow="ALWAYS" />
                         <Label text="BLOCKED" styleClass="badge-blocked"/>

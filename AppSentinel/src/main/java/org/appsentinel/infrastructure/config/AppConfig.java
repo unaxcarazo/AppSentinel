@@ -31,7 +31,7 @@ public class AppConfig {
     // ============================================
     
     public static String getDbUrl() {
-        return props.getProperty("db.url", "jdbc:postgresql://localhost:5432/appsentinel");
+        return props.getProperty("db.url", "jdbc:postgresql://localhost:5432/sentuser");
     }
     
     public static String getDbUser() {
@@ -39,7 +39,7 @@ public class AppConfig {
     }
     
     public static String getDbPassword() {
-        return props.getProperty("db.password", "");
+        return props.getProperty("db.password", "tiger");
     }
     
     // ============================================

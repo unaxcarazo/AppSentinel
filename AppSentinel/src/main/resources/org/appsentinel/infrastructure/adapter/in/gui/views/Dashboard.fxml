@@ -5,10 +5,13 @@
 <?import java.util.*?>
 <?import javafx.scene.*?>
 <?import javafx.scene.control.*?>
-<?import javafx.scene.layout.*?>
+<?import java.lang.String?>
 
-<AnchorPane id="AnchorPane" prefHeight="400.0" prefWidth="600.0" styleClass="mainFxmlClass" xmlns:fx="http://javafx.com/fxml/1" fx:controller=".DashboardController">
+<AnchorPane fx:id="rootDashboard" prefHeight="400.0" prefWidth="600.0" styleClass="mainFxmlClass" 
+            xmlns="http://javafx.com/javafx/8" 
+            xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="org.appsentinel.infrastructure.gui.controller.DashboardController">
     <stylesheets>
-        <URL value="@/styles/dashboard.css"/>
+        <String fx:value="@../../../../../../../styles/dashboard.css"/>
     </stylesheets>
 </AnchorPane>

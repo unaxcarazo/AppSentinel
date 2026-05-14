@@ -19,7 +19,7 @@ public class AppSentinel extends Application {
 
         // Cargar la ventana principal
         FXMLLoader loader = new FXMLLoader(
-            getClass().getResource("/org/appsentinel/main.fxml")
+            getClass().getResource("/org/appsentinel/infrastructure/adapter/in/gui/views/Main.fxml")
         );
         stage.setScene(new Scene(loader.load(), 900, 600));
         stage.setTitle("AppSentinel");

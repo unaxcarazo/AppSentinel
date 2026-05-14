@@ -12,37 +12,81 @@ import java.io.IOException;
 
 public class MainController {
 
-    @FXML private AnchorPane contenedor;
+    @FXML
+    private AnchorPane contenedor;
+    @FXML
+    private Button btnDashboard;
+    @FXML
+    private Button btnAppBlocker;
+    @FXML
+    private Button btnPerformance;
+    @FXML
+    private Button btnHistory;
+    @FXML
+    private Button btnDeepFocus;
 
     // Dependencias que vienen de AppWiring via AppSentinel
-    private TimeTrackingService     tracking;
-    private RegistroRepositoryPort  repositorio;
+    private TimeTrackingService tracking;
+    private RegistroRepositoryPort repositorio;
     private CategoriaRepositoryPort categorias;
 
     /**
-     * AppSentinel llama esto justo después de cargar main.fxml.
+     * AppSentinel llama esto justo después de cargar Main.fxml.
      * Inyecta las dependencias y carga la vista por defecto.
      */
     public void init(TimeTrackingService tracking,
-                     RegistroRepositoryPort repositorio,
-                     CategoriaRepositoryPort categorias) {
-        this.tracking    = tracking;
+            RegistroRepositoryPort repositorio,
+            CategoriaRepositoryPort categorias) {
+        this.tracking = tracking;
         this.repositorio = repositorio;
-        this.categorias  = categorias;
+        this.categorias = categorias;
         onDashboard(); // vista por defecto al arrancar
     }
 
-    @FXML public void onDashboard()   { cargarVista("dashboard"); }
-    @FXML public void onAppBlocker()  { cargarVista("appblocker"); }
-    @FXML public void onPerformance() { cargarVista("performance"); }
-    @FXML public void onHistory()     { cargarVista("usagehistory"); }
-    @FXML public void onDeepFocus()   { /* lógica modo focus */ }
+    @FXML
+    public void onDashboard() {
+        resetNavStyles();
+        btnDashboard.getStyleClass().add("nav-item-active");
+        cargarVista("Dashboard");
+    }
+
+    @FXML
+    public void onAppBlocker() {
+        resetNavStyles();
+        btnAppBlocker.getStyleClass().add("nav-item-active");
+        cargarVista("AppBlocker");
+    }
+
+    @FXML
+    public void onPerformance() {
+        resetNavStyles();
+        btnPerformance.getStyleClass().add("nav-item-active");
+        cargarVista("Performance");
+    }
+
+    @FXML
+    public void onHistory() {
+        resetNavStyles();
+        btnHistory.getStyleClass().add("nav-item-active");
+        cargarVista("UsageHistory");
+    }
+
+    @FXML
+    public void onDeepFocus() {
+        /* lógica modo focus */ }
+
+    private void resetNavStyles() {
+        btnDashboard.getStyleClass().remove("nav-item-active");
+        btnAppBlocker.getStyleClass().remove("nav-item-active");
+        btnPerformance.getStyleClass().remove("nav-item-active");
+        btnHistory.getStyleClass().remove("nav-item-active");
+    }
 
     private void cargarVista(String nombre) {
         try {
             FXMLLoader loader = new FXMLLoader(
-                getClass().getResource(
-                    "/org/appsentinel/fxml/" + nombre + ".fxml"));
+                    getClass().getResource(
+                            "/org/appsentinel/infrastructure/adapter/in/gui/views/" + nombre + ".fxml"));
             Parent vista = loader.load();
 
             // Inyectar dependencias al controlador de la vista

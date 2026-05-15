@@ -20,9 +20,13 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
+import org.appsentinel.infrastructure.adapter.out.FakeRegistroAdapter;
 import org.appsentinel.infrastructure.adapter.out.PostgreSQLRepositoryAdapter;
 
 public class DashboardController implements Initializable {
+
+    private static final double LIMITE_TRABAJO_SEG = 5 * 3600; // 5 horas en segundos
+    private static final double LIMITE_DISTRACCION_SEG = 1 * 3600; // 1 hora en segundos
 
     @FXML
     private VBox vboxTopWork;
@@ -36,7 +40,9 @@ public class DashboardController implements Initializable {
     @FXML
     private VBox vboxBlockingLog;
 
-    private RegistroRepositoryPort repository = new PostgreSQLRepositoryAdapter();
+    // Comenta la línea de PostgreSQL y usa la de Fake
+    // private RegistroRepositoryPort repository = new PostgreSQLRepositoryAdapter();
+    private RegistroRepositoryPort repository = new FakeRegistroAdapter();
 
     // Declaración de elementos FXML
     @FXML
@@ -97,8 +103,16 @@ public class DashboardController implements Initializable {
         
         // Añadir ambas series para que el CSS coloree cian y naranja
         barChartActivity.getData().addAll(serieTrabajo, serieDistraccion);
-        */
+         */
         System.out.println("Dashboard inicializado con patrón de colores Cyber-Dark.");
+    }
+
+    // PRUEBAS  
+    private void cargarLogs() {
+        vboxActivityLog.getChildren().clear(); // ¡ESTA LÍNEA ES CLAVE!
+        vboxBlockingLog.getChildren().clear(); // Borra los ejemplos del FXML
+
+        // ... luego el resto del código que añade los registros ...
     }
 
     @FXML
@@ -122,57 +136,101 @@ public class DashboardController implements Initializable {
         }
     }
 
-    private void actualizarRankingTrabajo(List<Registro> topApps) {
-        vboxTopWork.getChildren().clear(); // Asegúrate de tener @FXML private VBox vboxTopWork;
+    private void actualizarRankingTrabajo(List<Registro> topWorkApps) {
+        vboxTopWork.getChildren().clear();
 
         int pos = 1;
-        for (Registro app : topApps) {
+        for (Registro app : topWorkApps) {
+            // 1. Lógica de la barra (Límite 5h = 18000s)
+            double progreso = (double) app.getDuracionSeg() / LIMITE_TRABAJO_SEG;
+            if (progreso > 1.0) {
+                progreso = 1.0;
+            }
+
+            // 2. Crear la barra y LIMPIAR estilos previos
+            ProgressBar bar = new ProgressBar(progreso);
+            bar.setMaxWidth(Double.MAX_VALUE);   // Permite expandirse
+            bar.setMinWidth(150);                // Garantiza que no sea invisible
+            HBox.setHgrow(bar, Priority.ALWAYS);  // Empuja al HBox a darle todo el ancho
+
+            // Limpiamos cualquier clase de color previa para asegurar el CIAN
+            bar.getStyleClass().removeAll("progress-work-thin", "progress-distraction-thin", "progress-bar-danger");
+            bar.getStyleClass().add("progress-work-thin");
+
+            // 3. Crear los contenedores
             HBox row = new HBox();
             row.getStyleClass().add("ranking-row");
             row.setAlignment(Pos.CENTER_LEFT);
             row.setSpacing(15);
 
-            Label lblPos = new Label("#" + pos);
-            lblPos.getStyleClass().add("ranking-pos");
-
             VBox infoContainer = new VBox();
             infoContainer.setSpacing(5);
             HBox.setHgrow(infoContainer, Priority.ALWAYS);
 
+            // 4. Crear etiquetas (Nombre y Tiempo)
             HBox topInfo = new HBox();
             Label name = new Label(app.getNombreActividad());
             name.getStyleClass().add("app-name");
+
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
+
             Label time = new Label(formatearTiempo(app.getDuracionSeg()));
             time.getStyleClass().add("app-time");
+
             topInfo.getChildren().addAll(name, spacer, time);
 
-            ProgressBar bar = new ProgressBar((double) app.getDuracionSeg() / 14400); // Ejemplo sobre 4h
-            bar.setMaxWidth(Double.MAX_VALUE);
-            bar.getStyleClass().add("progress-work-thin"); // COLOR CIAN
-
+            // 5. Montar la jerarquía
             infoContainer.getChildren().addAll(topInfo, bar);
+
+            Label lblPos = new Label("#" + pos);
+            lblPos.getStyleClass().add("ranking-pos");
+
             row.getChildren().addAll(lblPos, infoContainer);
 
+            // 6. Añadir a la interfaz
             vboxTopWork.getChildren().add(row);
+
             pos++;
         }
     }
 
-    private void actualizarRankingDistracciones(List<Registro> topApps) {
-        vboxTopDistractions.getChildren().clear(); // vboxTopDistractions es el fx:id de tu VBox en FXML
+    private void actualizarRankingDistracciones(List<Registro> topDistractionApps) {
+        vboxTopDistractions.getChildren().clear();
 
         int pos = 1;
-        for (Registro app : topApps) {
-            // Creamos la estructura HBox que diseñamos ayer
+        for (Registro app : topDistractionApps) {
+            // 1. Lógica de progreso (1h = 3600s)
+            double progreso = (double) app.getDuracionSeg() / LIMITE_DISTRACCION_SEG;
+
+            // Determinamos el estado antes de capar a 1.0
+            boolean excedido = progreso >= 1.0;
+            if (progreso > 1.0) {
+                progreso = 1.0;
+            }
+
+            // 2. Crear barra y LIMPIAR estilos previos para evitar errores de renderizado
+            ProgressBar bar = new ProgressBar(progreso);
+            bar.setMaxWidth(Double.MAX_VALUE);   // Permite expandirse
+            bar.setMinWidth(150);                // Garantiza que no sea invisible
+            HBox.setHgrow(bar, Priority.ALWAYS);  // Empuja al HBox a darle todo el ancho
+
+            // Esto asegura que la barra no arrastre estilos de otras filas
+            bar.getStyleClass().removeAll("progress-bar-danger", "progress-distraction-thin");
+
+            if (excedido) {
+                // Si llega al 100% o lo pasa, clase roja
+                bar.getStyleClass().add("progress-bar-danger");
+            } else {
+                // Si es menor al 100%, clase naranja
+                bar.getStyleClass().add("progress-distraction-thin");
+            }
+
+            // 3. Construcción visual de la fila
             HBox row = new HBox();
             row.getStyleClass().add("ranking-row");
             row.setAlignment(Pos.CENTER_LEFT);
             row.setSpacing(15);
-
-            Label lblPos = new Label("#" + pos);
-            lblPos.getStyleClass().add("ranking-pos");
 
             VBox infoContainer = new VBox();
             infoContainer.setSpacing(5);
@@ -181,20 +239,24 @@ public class DashboardController implements Initializable {
             HBox topInfo = new HBox();
             Label name = new Label(app.getNombreActividad());
             name.getStyleClass().add("app-name");
+
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
+
             Label time = new Label(formatearTiempo(app.getDuracionSeg()));
             time.getStyleClass().add("app-time");
+
             topInfo.getChildren().addAll(name, spacer, time);
 
-            ProgressBar bar = new ProgressBar((double) app.getDuracionSeg() / 3600); // Ejemplo sobre 1h
-            bar.setMaxWidth(Double.MAX_VALUE);
-            bar.getStyleClass().add("progress-distraction-thin");
-
+            // 4. Montaje de nodos
             infoContainer.getChildren().addAll(topInfo, bar);
-            row.getChildren().addAll(lblPos, infoContainer);
 
+            Label lblPos = new Label("#" + pos);
+            lblPos.getStyleClass().add("ranking-pos");
+
+            row.getChildren().addAll(lblPos, infoContainer);
             vboxTopDistractions.getChildren().add(row);
+
             pos++;
         }
     }

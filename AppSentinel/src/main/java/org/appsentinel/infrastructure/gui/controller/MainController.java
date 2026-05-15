@@ -67,7 +67,7 @@ public class MainController {
             Parent vista = loader.load();
 
             // Inyectar dependencias al controlador de la vista
-            Object ctrl = loader.getController();
+          /*  Object ctrl = loader.getController();
             if (ctrl instanceof DashboardController dc) {
                 dc.init(repositorio);
             } else if (ctrl instanceof AppBlockerController ab) {
@@ -76,7 +76,7 @@ public class MainController {
                 pc.init(tracking);
             } else if (ctrl instanceof UsageHistoryController uh) {
                 uh.init(repositorio);
-            }
+            }*/
 
             // Ajustar la vista al tamaño del contenedor
             AnchorPane.setTopAnchor(vista, 0.0);

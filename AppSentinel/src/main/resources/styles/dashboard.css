@@ -40,14 +40,44 @@
 .kpi-value { -fx-text-fill: -color-text-main; -fx-font-size: 32px; -fx-font-weight: bold; }
 
 /* ----------- BARRAS DE PROGRESO (KPI y Ranking) ----------- */
-.work-progress .bar, .progress-work-thin .bar { -fx-background-color: -color-cian; }
-.distraction-progress .bar, .progress-distraction-thin .bar { -fx-background-color: -color-naranja; }
-
-.progress-work-thin, .progress-distraction-thin {
-    -fx-pref-height: 4px; -fx-min-height: 4px; -fx-max-height: 4px;
-    -fx-padding: 2 0 0 0;
+/* Altura unificada para que sean visibles */
+.progress-work-thin, 
+.progress-distraction-thin, 
+.progress-bar-danger {
+    -fx-pref-height: 10px; 
+    -fx-min-height: 10px;
+    -fx-max-height: 10px;
 }
-.progress-work-thin .track, .progress-distraction-thin .track { -fx-background-color: #0d1117; }
+
+/* El fondo de la barra (el carril vacío) */
+.progress-work-thin .track, 
+.progress-distraction-thin .track,
+.progress-bar-danger .track { 
+    -fx-background-color: #0d1117; 
+    -fx-background-radius: 10;
+}
+
+/* Colores de relleno (La parte que progresa) */
+.work-progress .bar, .progress-work-thin .bar { 
+    -fx-background-color: -color-cian; 
+    -fx-background-radius: 10;
+}
+
+.distraction-progress .bar, .progress-distraction-thin .bar { 
+    -fx-background-color: -color-naranja; 
+    -fx-background-radius: 10;
+}
+
+/* Clase de Peligro (Roja) */
+.progress-bar-danger .bar {
+    -fx-background-color: #ff0044;
+    -fx-background-radius: 10;
+    -fx-effect: dropshadow(gaussian, #ff0044, 8, 0, 0, 0);
+}
+
+.progress-bar-danger .track {
+    -fx-background-color: #2a000a;
+}
 
 
 /* ----------- RANKINGS E ICONOS ----------- */
@@ -129,4 +159,30 @@
     -fx-border-radius: 4;
     -fx-padding: 3 8 3 8;
     -fx-background-color: rgba(255, 92, 0, 0.1);
+}
+
+/* ----------- Barra de trabajo (Cian) ----------- */
+.progress-work-thin .bar {
+    -fx-background-color: #00f2ff;
+    -fx-background-radius: 10;
+    -fx-effect: dropshadow(gaussian, #00f2ff, 5, 0, 0, 0);
+}
+
+/* ----------- Barra de distracciones (Naranja) ----------- */
+.progress-distraction-thin .bar {
+    -fx-background-color: #ff5c00;
+    -fx-background-radius: 10;
+    -fx-effect: dropshadow(gaussian, #ff5c00, 5, 0, 0, 0);
+}
+
+/* Clase para cuando se supera el límite de distracción */
+.progress-bar-danger .bar {
+    -fx-background-color: #ff0044; /* Un rojo intenso/fucsia ciberpunk */
+    -fx-background-radius: 5px;
+    -fx-effect: dropshadow(gaussian, #ff0044, 8, 0, 0, 0); /* Brillo rojo */
+}
+
+/* Opcional: que el fondo de la barra de peligro sea un poco más oscuro */
+.progress-bar-danger .track {
+    -fx-background-color: #2a000a;
 }

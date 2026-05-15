@@ -86,7 +86,7 @@ public class ProcessMonitorAdapter {
         }
 
         // Envío de datos sanitizados hacia el puerto de entrada del dominio
-        monitorPort.reportarActividadSistema(nombreProceso, titulo);
+        monitorPort.reportarActividadSistema(nombreProceso, titulo, pid);
         LOGGER.log(Level.FINE, "Sensor detectó actividad en: {0}", nombreProceso);
     }
 
@@ -106,7 +106,7 @@ public class ProcessMonitorAdapter {
             String nombre = cmdOpt.isPresent() ? extraerNombre(cmdOpt.get()) : "desconocido";
             String titulo = ph.info().commandLine().orElse(nombre);
             if (!"desconocido".equals(nombre)) {
-                monitorPort.reportarActividadSistema(nombre, titulo);
+                monitorPort.reportarActividadSistema(nombre, titulo,(int) ph.pid());
             }
         }
     }

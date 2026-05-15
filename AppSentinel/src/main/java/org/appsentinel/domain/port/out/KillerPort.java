@@ -5,6 +5,6 @@ package org.appsentinel.domain.port.out;
  * la infraestructura ejecuta con ProcessHandle.
  */
 public interface KillerPort {
-    boolean cerrarProceso(String nombreProceso);
+    boolean cerrarProceso(String nombreProceso, int pid);
     void cerrarPestañaNavegador(int tabId);
 }

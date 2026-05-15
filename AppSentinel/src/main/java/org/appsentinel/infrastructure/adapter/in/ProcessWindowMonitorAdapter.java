@@ -1,31 +1,17 @@
 package org.appsentinel.infrastructure.adapter.in;
 
+import java.util.Optional;
 import org.appsentinel.domain.port.in.MonitorPort;
 import org.appsentinel.infrastructure.adapter.out.JavaProcessResolverAdapter;
 import org.appsentinel.infrastructure.adapter.out.WindowsJnaNativeAdapter;
 import org.appsentinel.infrastructure.config.AppConfig;
 
-import java.util.Optional; // CORRECCIÓN 1: Importación de Optional añadida
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * ProcessWindowMonitorAdapter: Adaptador de ENTRADA.
- * 
- * Es el único componente del sistema que despierta por iniciativa propia
- * (temporizador cada 10 segundos). Emite el estímulo hacia el dominio:
- * "He detectado esta actividad en el sistema operativo".
- * 
- * Para obtener los datos, TIRA de adaptadores de SALIDA que consultan al OS:
- * - WindowsJnaNativeAdapter (Windows, preciso, via JNA)
- * - JavaProcessResolverAdapter (multiplataforma, fallback via ProcessHandle)
- * 
- * El dominio (MonitorPort / TimeTrackingService) no sabe cómo se detectó,
- * solo recibe el resultado normalizado.
- */
 public class ProcessWindowMonitorAdapter {
 
     private static final Logger LOGGER = Logger.getLogger(ProcessWindowMonitorAdapter.class.getName());
@@ -37,16 +23,10 @@ public class ProcessWindowMonitorAdapter {
     private final int intervaloSegundos;
     private volatile boolean ejecutando = false;
 
-    /*
-     * Constructor estándar: crea los adaptadores de salida internamente.
-     */
     public ProcessWindowMonitorAdapter(MonitorPort monitorPort) {
         this(monitorPort, new WindowsJnaNativeAdapter(), new JavaProcessResolverAdapter());
     }
 
-    /*
-     * Constructor para tests: permite inyectar mocks de los adaptadores de salida.
-     */
     public ProcessWindowMonitorAdapter(MonitorPort monitorPort,
                                         WindowsJnaNativeAdapter jnaAdapter,
                                         JavaProcessResolverAdapter javaAdapter) {
@@ -61,9 +41,6 @@ public class ProcessWindowMonitorAdapter {
         });
     }
 
-    /**
-     * Arranca el ciclo de escaneo periódico.
-     */
     public void iniciar() {
         if (ejecutando) return;
         ejecutando = true;
@@ -71,18 +48,12 @@ public class ProcessWindowMonitorAdapter {
         scheduler.scheduleAtFixedRate(this::escanear, 0, intervaloSegundos, TimeUnit.SECONDS);
     }
 
-    /**
-     * Detiene el ciclo de escaneo.
-     */
     public void detener() {
         ejecutando = false;
         scheduler.shutdown();
         LOGGER.log(Level.INFO, "[MONITOR] Escáner detenido");
     }
 
-    /**
-     * Ciclo de escaneo: consulta al OS y empuja al dominio.
-     */
     private void escanear() {
         try {
             consultarOs().ifPresentOrElse(
@@ -94,11 +65,6 @@ public class ProcessWindowMonitorAdapter {
         }
     }
 
-    /*
-     * Estrategia de consulta al OS:
-     * 1. Intentar JNA (Windows, preciso, ventana real activa)
-     * 2. Fallback a ProcessHandle (multiplataforma, por CPU)  
-     */
     private Optional<DatosActividad> consultarOs() {
         String so = System.getProperty("os.name").toLowerCase();
 
@@ -106,26 +72,23 @@ public class ProcessWindowMonitorAdapter {
             Optional<WindowsJnaNativeAdapter.VentanaDetectada> jna = jnaAdapter.consultarVentanaActiva();
             if (jna.isPresent()) {
                 WindowsJnaNativeAdapter.VentanaDetectada v = jna.get();
-                return Optional.of(new DatosActividad(v.nombreProceso(), v.tituloVentana()));
+                // FIX: Propagamos el PID que JNA extrajo de la ventana activa
+                return Optional.of(new DatosActividad(v.nombreProceso(), v.tituloVentana(), v.pid()));
             }
             LOGGER.log(Level.FINE, "[MONITOR] JNA no detectó ventana, probando fallback Java");
         }
 
-        // Consumir correctamente el record ProcesoInferido de la clase JavaProcessResolverAdapter
         Optional<JavaProcessResolverAdapter.ProcesoInferido> java = javaAdapter.consultarProcesoPrincipal();
-        return java.map(p -> new DatosActividad(p.nombreProceso(), p.tituloVentana()));
+        // FIX: Fallback Java sin PID preciso (cross-platform). -1 indica "desconocido".
+        return java.map(p -> new DatosActividad(p.nombreProceso(), p.tituloVentana(), -1));
     }
 
-    /**
-     * Normaliza y envía al dominio via puerto hexagonal.
-     */
     private void notificarDominio(DatosActividad datos) {
-        LOGGER.log(Level.FINE, "[MONITOR] Notificando dominio: {0}", datos.nombreProceso);
-        monitorPort.reportarActividadSistema(datos.nombreProceso, datos.tituloVentana);
+        LOGGER.log(Level.FINE, "[MONITOR] Notificando dominio: {0} (PID: {1})", 
+            new Object[]{datos.nombreProceso, datos.pid});
+        monitorPort.reportarActividadSistema(datos.nombreProceso, datos.tituloVentana, datos.pid);
     }
 
-    /**
-     * DTO interno para normalizar entre los dos adaptadores de salida.
-     */
-    private record DatosActividad(String nombreProceso, String tituloVentana) {}
+    // FIX: Record ampliado con PID para no perder la identidad única del proceso en foco
+    private record DatosActividad(String nombreProceso, String tituloVentana, int pid) {}
 }

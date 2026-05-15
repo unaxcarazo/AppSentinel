@@ -15,5 +15,5 @@ public interface MonitorPort {
      * @param nombreProceso Nombre del proceso (ej: "chrome.exe")
      * @param tituloVentana Título de la ventana activa (ej: "YouTube - Google Chrome")
      */
-    void reportarActividadSistema(String nombreProceso, String tituloVentana);
+    void reportarActividadSistema(String nombreProceso, String tituloVentana, int pid);
 }

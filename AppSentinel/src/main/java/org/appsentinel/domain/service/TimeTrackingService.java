@@ -14,21 +14,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
-/**
- * TimeTrackingService: Orquestador principal.
- * 
- * Correcciones industriales:
- * - Clave Web unificada por dominio (evita fugas de memoria por URL única).
- * - Patterns compilados estáticamente para extracción de dominio.
- * - Heartbeat por timestamp para detección de cierre manual.
- * - Constantes de dominio en lugar de literales.
- * - Sincronización estricta bajo lockLimpieza para thread-safety entre escáner y scheduler.
- * - Purga de acumulado al expirar inactividad (reset de contador entre sesiones).
- * - Máquina de estados secuencial: INICIADA → AVISO_PREVENTIVO → BLOQUEO_SESION → PAUSA_REENFOQUE.
- */
 public class TimeTrackingService implements MonitorPort, BrowserEventPort {
+
+    private static final Logger LOGGER = Logger.getLogger(TimeTrackingService.class.getName());
 
     private final DistractionDetector detector;
     private final RegistroRepositoryPort repository;
@@ -82,8 +74,9 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     }
 
     @Override
-    public void reportarActividadSistema(String proceso, String titulo) {
-        procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso), titulo, -1);
+    public void reportarActividadSistema(String proceso, String titulo, int pid) {
+        // FIX: PID propagado al procesamiento
+        procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso), titulo, -1, pid);
     }
 
     @Override
@@ -94,11 +87,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
             "Web: " + (titulo != null ? titulo : dominio),
             detector.clasificarUrl(url),
             dominio,
-            tabId
+            tabId,
+            -1  // Eventos de navegador no usan PID de proceso OS
         );
     }
 
-    private void procesarActividad(String clave, String nombre, String categoria, String detalle, int tabId) {
+    // FIX: Nuevo parámetro 'int pid' para almacenar identidad única del proceso
+    private void procesarActividad(String clave, String nombre, String categoria, 
+                                   String detalle, int tabId, int pid) {
         synchronized (lockLimpieza) {
             LocalDateTime ahora = LocalDateTime.now();
 
@@ -108,7 +104,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
                 if (Categoria.SIN_CLASIFICAR.equals(categoria)) {
                     notificacion.notificarAppSinClasificar(nombre, detalle);
                 }
-                return new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId);
+                return new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid);
             });
 
             SeguimientoActividad seg = activas.get(clave);
@@ -116,6 +112,10 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
                 seg.ultimaVezVista = ahora;
                 if (tabId > 0) {
                     seg.tabId = tabId;
+                }
+                // Actualizar PID si el sistema operativo reasignó o reutilizó (defensivo)
+                if (pid > 0) {
+                    seg.pid = pid;
                 }
             }
         }
@@ -147,7 +147,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
                     persistirChunk(seg, segsDesdeInicio, ahora);
                 }
                 clavesAEliminar.add(clave);
-                acumulado.remove(clave); // PURGA: resetea contador para nueva sesión
+                acumulado.remove(clave);
                 System.out.println("[MANTENIMIENTO] Removido inactivo: " + seg.nombre);
                 continue;
             }
@@ -218,17 +218,22 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         }
     }
 
+    // FIX: Cirugía por PID. Eliminado código roto con variables inexistentes.
     private void cerrar(String clave, SeguimientoActividad seg) {
         if (killer == null) return;
 
         if (clave.startsWith("SYS|")) {
-            String nombreProceso = clave.substring(4);
-            killer.cerrarProceso(nombreProceso);
+            if (seg.pid > 0) {
+                // FIX: Se pasa el nombre (para logging/validación de protegidos) y el PID exacto
+                killer.cerrarProceso(seg.nombre, seg.pid);
+            } else {
+                LOGGER.log(Level.WARNING, "[KILL] PID no disponible para proceso: {0}", seg.nombre);
+            }
         } else if (clave.startsWith("WEB|")) {
             if (seg.tabId > 0) {
                 killer.cerrarPestañaNavegador(seg.tabId);
             } else {
-                System.out.println("[KILL] Solicitando cierre de pestaña web (sin tabId): " + seg.detalle);
+                LOGGER.log(Level.WARNING, "[KILL] Solicitando cierre de pestaña web (sin tabId): {0}", seg.detalle);
             }
         }
     }
@@ -267,20 +272,24 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         INICIADA, AVISO_PREVENTIVO, BLOQUEO_SESION, PAUSA_REENFOQUE
     }
 
+    // FIX: Campo 'pid' añadido para identidad quirúrgica del proceso OS
     private static class SeguimientoActividad {
         String nombre, detalle, categoria;
         LocalDateTime inicio;
         LocalDateTime ultimaVezVista;
         int tabId;
+        int pid;  // PID del proceso OS asociado a esta actividad
         EstadoDistraccion estado = EstadoDistraccion.INICIADA;
 
-        SeguimientoActividad(String nombre, String detalle, String categoria, LocalDateTime inicio, int tabId) {
+        SeguimientoActividad(String nombre, String detalle, String categoria, 
+                             LocalDateTime inicio, int tabId, int pid) {
             this.nombre = nombre;
             this.detalle = detalle;
             this.categoria = categoria;
             this.inicio = inicio;
             this.ultimaVezVista = inicio;
             this.tabId = tabId;
+            this.pid = pid;
         }
     }
 }

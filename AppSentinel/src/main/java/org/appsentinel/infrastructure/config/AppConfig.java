@@ -20,7 +20,7 @@ public class AppConfig {
     
     static {
         try (InputStream is = AppConfig.class.getClassLoader()
-                .getResourceAsStream("db.properties")) {
+                .getResourceAsStream("org/appsentinel/db.properties")) {
             if (is != null) {
                 props.load(is);
                 LOGGER.log(Level.INFO, "[CONFIG] db.properties cargado correctamente");
@@ -45,7 +45,7 @@ public class AppConfig {
     }
     
     public static String getDbPassword() {
-        return props.getProperty("db.password", "");
+        return props.getProperty("db.password", "tiger");
     }
     
     // ============================================

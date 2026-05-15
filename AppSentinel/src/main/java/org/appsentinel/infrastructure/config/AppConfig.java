@@ -3,13 +3,19 @@ package org.appsentinel.infrastructure.config;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Properties;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * AppConfig: Central de configuración.
  * Lee db.properties del classpath. Si no existe, usa valores por defecto.
+ * - Logging estructurado con java.util.logging.Logger.
+ * - Validación defensiva de parseo numérico con mensajes descriptivos.
+ * - Clamp de valores mínimos para prevenir configuración semánticamente inválida.
  */
 public class AppConfig {
     
+    private static final Logger LOGGER = Logger.getLogger(AppConfig.class.getName());
     private static final Properties props = new Properties();
     
     static {
@@ -17,12 +23,12 @@ public class AppConfig {
                 .getResourceAsStream("db.properties")) {
             if (is != null) {
                 props.load(is);
-                System.out.println("Configuración cargada desde db.properties");
+                LOGGER.log(Level.INFO, "[CONFIG] db.properties cargado correctamente");
             } else {
-                System.err.println("No se encontró db.properties, usando valores por defecto");
+                LOGGER.log(Level.WARNING, "[CONFIG] No se encontró db.properties, usando valores por defecto");
             }
         } catch (IOException e) {
-            System.err.println("Error leyendo db.properties: " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "[CONFIG] Error leyendo db.properties: {0}", e.getMessage());
         }
     }
     
@@ -47,15 +53,15 @@ public class AppConfig {
     // ============================================
     
     public static int getSegundosAvisoPreventivo() {
-        return Integer.parseInt(props.getProperty("tiempo.aviso.preventivo", "120"));
+        return parsearEnteroPositivo("tiempo.aviso.preventivo", 120);
     }
     
     public static int getSegundosBloqueoSesion() {
-        return Integer.parseInt(props.getProperty("tiempo.bloqueo.sesion", "600"));
+        return parsearEnteroPositivo("tiempo.bloqueo.sesion", 600);
     }
     
     public static int getSegundosPausaReenfoque() {
-        return Integer.parseInt(props.getProperty("tiempo.pausa.reenfoque", "1500"));
+        return parsearEnteroPositivo("tiempo.pausa.reenfoque", 1500);
     }
     
     // ============================================
@@ -71,7 +77,7 @@ public class AppConfig {
     // ============================================
     
     public static int getEscaneoIntervaloSegundos() {
-        return Integer.parseInt(props.getProperty("scan.interval", "10"));
+        return parsearEnteroPositivo("scan.interval", 10);
     }
     
     // ============================================
@@ -80,5 +86,36 @@ public class AppConfig {
     
     public static String getUsuarioSistema() {
         return System.getProperty("user.name");
+    }
+    
+    // ============================================
+    // UTILIDADES INTERNAS
+    // ============================================
+    
+    /**
+     * Parsea una propiedad como entero positivo con defensa contra valores corruptos.
+     * Si el valor no es numérico o es menor que 1, retorna el default y loguea el error.
+     */
+    private static int parsearEnteroPositivo(String clave, int valorPorDefecto) {
+        String raw = props.getProperty(clave);
+        if (raw == null || raw.isBlank()) {
+            return valorPorDefecto;
+        }
+        
+        try {
+            int valor = Integer.parseInt(raw.trim());
+            if (valor < 1) {
+                LOGGER.log(Level.WARNING, 
+                    "[CONFIG] {0}={1} es inválido (mínimo 1). Usando default: {2}", 
+                    new Object[]{clave, raw, valorPorDefecto});
+                return valorPorDefecto;
+            }
+            return valor;
+        } catch (NumberFormatException e) {
+            LOGGER.log(Level.SEVERE, 
+                "[CONFIG] {0}='{1}' no es numérico. Usando default: {2}", 
+                new Object[]{clave, raw, valorPorDefecto});
+            return valorPorDefecto;
+        }
     }
 }

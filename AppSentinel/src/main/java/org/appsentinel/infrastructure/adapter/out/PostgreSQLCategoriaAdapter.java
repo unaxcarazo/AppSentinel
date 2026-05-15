@@ -112,6 +112,42 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
     }
 
     /**
+     * NUEVO: Consulta apps filtradas por categoría específica.
+     * Usado por la capa de presentación para cargar listas segmentadas
+     * (ej: listaTrabajo = obtenerAppsPorCategoria(Categoria.PRODUCTIVO)).
+     */
+    @Override
+    public List<String> obtenerAppsPorCategoria(String categoria) {
+        if (categoria == null || categoria.isBlank()) {
+            LOGGER.log(Level.WARNING, "[CONSULTA] Categoría nula o vacía, retornando lista vacía");
+            return List.of();
+        }
+
+        List<String> apps = new ArrayList<>();
+        String sql = """
+            SELECT nombre_app FROM categorias_app
+            WHERE categoria = ?
+            ORDER BY nombre_app ASC
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, categoria);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    apps.add(rs.getString("nombre_app"));
+                }
+            }
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener apps por categoría: {0}", categoria);
+        }
+
+        return apps;
+    }
+
+    /**
      * Inserción explícita de auto-descubrimiento.
      * 
      * Uso principal: invocado internamente por obtenerCategoria() cuando no encuentra registro.

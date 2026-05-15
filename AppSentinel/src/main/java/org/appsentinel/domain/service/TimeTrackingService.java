@@ -24,6 +24,9 @@ import java.util.regex.Pattern;
  * - Patterns compilados estáticamente para extracción de dominio.
  * - Heartbeat por timestamp para detección de cierre manual.
  * - Constantes de dominio en lugar de literales.
+ * - Sincronización estricta bajo lockLimpieza para thread-safety entre escáner y scheduler.
+ * - Purga de acumulado al expirar inactividad (reset de contador entre sesiones).
+ * - Máquina de estados secuencial: INICIADA → AVISO_PREVENTIVO → BLOQUEO_SESION → PAUSA_REENFOQUE.
  */
 public class TimeTrackingService implements MonitorPort, BrowserEventPort {
 
@@ -50,7 +53,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     private static final int GRACIA_ESTRICTO_SEG = 10;
     private static final int SEGUNDOS_SIN_RASTRO = 15;
 
-    // Patterns estáticos para extracción de dominio (alineados con DistractionDetector)
     private static final Pattern PROTOCOLO_WWW = Pattern.compile("https?://(www\\.)?");
     private static final Pattern PATH_QUERY = Pattern.compile("/.*");
 
@@ -81,76 +83,83 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
 
     @Override
     public void reportarActividadSistema(String proceso, String titulo) {
-        procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso), titulo);
+        procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso), titulo, -1);
     }
 
     @Override
-    public void reportarEventoNavegador(String url, String titulo) {
+    public void reportarEventoNavegador(String url, String titulo, int tabId) {
         String dominio = extraerDominio(url);
         procesarActividad(
             "WEB|" + dominio,
             "Web: " + (titulo != null ? titulo : dominio),
             detector.clasificarUrl(url),
-            dominio
+            dominio,
+            tabId
         );
     }
 
-    private void procesarActividad(String clave, String nombre, String categoria, String detalle) {
-        LocalDateTime ahora = LocalDateTime.now();
+    private void procesarActividad(String clave, String nombre, String categoria, String detalle, int tabId) {
+        synchronized (lockLimpieza) {
+            LocalDateTime ahora = LocalDateTime.now();
 
-        activas.computeIfAbsent(clave, k -> {
-            acumulado.putIfAbsent(clave, 0L);
-            System.out.println("[" + categoria + "] " + nombre);
-            if (Categoria.SIN_CLASIFICAR.equals(categoria)) {
-                notificacion.notificarAppSinClasificar(nombre, detalle);
+            activas.computeIfAbsent(clave, k -> {
+                acumulado.putIfAbsent(clave, 0L);
+                System.out.println("[" + categoria + "] " + nombre);
+                if (Categoria.SIN_CLASIFICAR.equals(categoria)) {
+                    notificacion.notificarAppSinClasificar(nombre, detalle);
+                }
+                return new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId);
+            });
+
+            SeguimientoActividad seg = activas.get(clave);
+            if (seg != null) {
+                seg.ultimaVezVista = ahora;
+                if (tabId > 0) {
+                    seg.tabId = tabId;
+                }
             }
-            return new SeguimientoActividad(nombre, detalle, categoria, ahora);
-        });
-
-        SeguimientoActividad existente = activas.get(clave);
-        if (existente != null) {
-            existente.ultimaVezVista = ahora;
         }
     }
 
     private void cicloDeMantenimiento() {
-        rotarYPersistir();
-        verificarLimites();
+        synchronized (lockLimpieza) {
+            rotarYPersistir();
+            verificarLimites();
+        }
     }
 
     private void rotarYPersistir() {
-        synchronized (lockLimpieza) {
-            if (activas.isEmpty()) return;
+        if (activas.isEmpty()) return;
 
-            List<String> clavesAEliminar = new ArrayList<>();
-            LocalDateTime ahora = LocalDateTime.now();
+        List<String> clavesAEliminar = new ArrayList<>();
+        LocalDateTime ahora = LocalDateTime.now();
 
-            for (Map.Entry<String, SeguimientoActividad> entry : activas.entrySet()) {
-                String clave = entry.getKey();
-                SeguimientoActividad seg = entry.getValue();
+        for (Map.Entry<String, SeguimientoActividad> entry : activas.entrySet()) {
+            String clave = entry.getKey();
+            SeguimientoActividad seg = entry.getValue();
 
-                long segsDesdeInicio = Duration.between(seg.inicio, ahora).getSeconds();
-                long segsSinRastro = Duration.between(seg.ultimaVezVista, ahora).getSeconds();
+            long segsDesdeInicio = Duration.between(seg.inicio, ahora).getSeconds();
+            long segsSinRastro = Duration.between(seg.ultimaVezVista, ahora).getSeconds();
 
-                if (segsSinRastro > SEGUNDOS_SIN_RASTRO) {
-                    if (segsDesdeInicio > 0) {
-                        acumulado.merge(clave, segsDesdeInicio, Long::sum);
-                        persistirChunk(seg, segsDesdeInicio, ahora);
-                    }
-                    clavesAEliminar.add(clave);
-                    System.out.println("[MANTENIMIENTO] Removido inactivo: " + seg.nombre);
-                    continue;
-                }
-
-                if (segsDesdeInicio > 5) {
+            if (segsSinRastro > SEGUNDOS_SIN_RASTRO) {
+                if (segsDesdeInicio > 0) {
                     acumulado.merge(clave, segsDesdeInicio, Long::sum);
                     persistirChunk(seg, segsDesdeInicio, ahora);
-                    seg.inicio = ahora;
                 }
+                clavesAEliminar.add(clave);
+                acumulado.remove(clave); // PURGA: resetea contador para nueva sesión
+                System.out.println("[MANTENIMIENTO] Removido inactivo: " + seg.nombre);
+                continue;
             }
 
-            clavesAEliminar.forEach(activas::remove);
+            if (segsDesdeInicio > 5) {
+                acumulado.merge(clave, segsDesdeInicio, Long::sum);
+                persistirChunk(seg, segsDesdeInicio, ahora);
+                seg.inicio = ahora;
+            }
         }
+
+        clavesAEliminar.forEach(activas::remove);
     }
 
     private void persistirChunk(SeguimientoActividad seg, long segs, LocalDateTime ahora) {
@@ -165,32 +174,28 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     }
 
     private void verificarLimites() {
-        synchronized (lockLimpieza) {
-            activas.forEach((clave, seg) -> {
-                if (!Categoria.DISTRACCION.equals(seg.categoria)) return;
+        activas.forEach((clave, seg) -> {
+            if (!Categoria.DISTRACCION.equals(seg.categoria)) return;
 
-                long segsActivos = Duration.between(seg.inicio, LocalDateTime.now()).getSeconds();
-                long total = acumulado.getOrDefault(clave, 0L) + segsActivos;
+            long segsActivos = Duration.between(seg.inicio, LocalDateTime.now()).getSeconds();
+            long total = acumulado.getOrDefault(clave, 0L) + segsActivos;
 
-                if (modoEstricto) {
-                    aplicarModoEstricto(clave, seg, total);
-                } else {
-                    aplicarNiveles(clave, seg, total);
-                }
-            });
-        }
+            if (modoEstricto) {
+                aplicarModoEstricto(clave, seg, total);
+            } else {
+                aplicarNiveles(clave, seg, total);
+            }
+        });
     }
 
     private void aplicarModoEstricto(String clave, SeguimientoActividad seg, long total) {
-        if (total >= segundosAviso && total < segundosAviso + GRACIA_ESTRICTO_SEG
-                && seg.estado == EstadoDistraccion.INICIADA) {
+        if (total >= segundosAviso && seg.estado == EstadoDistraccion.INICIADA) {
             seg.estado = EstadoDistraccion.AVISO_PREVENTIVO;
             notificacion.mostrarAlertaDistraccion(
                 "MODO ESTRICTO — cierre en " + GRACIA_ESTRICTO_SEG + " s", seg.nombre
             );
         }
-        if (total >= segundosAviso + GRACIA_ESTRICTO_SEG
-                && seg.estado != EstadoDistraccion.PAUSA_REENFOQUE) {
+        if (total >= segundosAviso + GRACIA_ESTRICTO_SEG && seg.estado == EstadoDistraccion.AVISO_PREVENTIVO) {
             seg.estado = EstadoDistraccion.PAUSA_REENFOQUE;
             notificacion.mostrarAlertaBloqueo(seg.nombre, total);
             cerrar(clave, seg);
@@ -198,29 +203,33 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     }
 
     private void aplicarNiveles(String clave, SeguimientoActividad seg, long total) {
-        if (total >= segundosPausa && seg.estado.puedeAvanzarA(EstadoDistraccion.PAUSA_REENFOQUE)) {
-            seg.estado = EstadoDistraccion.PAUSA_REENFOQUE;
-            notificacion.mostrarAlertaBloqueo(seg.nombre, total);
-            cerrar(clave, seg);
-        } else if (total >= segundosBloqueo && seg.estado.puedeAvanzarA(EstadoDistraccion.BLOQUEO_SESION)) {
-            seg.estado = EstadoDistraccion.BLOQUEO_SESION;
-            notificacion.mostrarAlertaBloqueo(seg.nombre, total);
-        } else if (total >= segundosAviso && seg.estado.puedeAvanzarA(EstadoDistraccion.AVISO_PREVENTIVO)) {
+        if (seg.estado == EstadoDistraccion.INICIADA && total >= segundosAviso) {
             seg.estado = EstadoDistraccion.AVISO_PREVENTIVO;
             notificacion.mostrarAlertaDistraccion(
                 "Llevas " + fmt(total) + " en " + seg.nombre, seg.nombre
             );
+        } else if (seg.estado == EstadoDistraccion.AVISO_PREVENTIVO && total >= segundosBloqueo) {
+            seg.estado = EstadoDistraccion.BLOQUEO_SESION;
+            notificacion.mostrarAlertaBloqueo(seg.nombre, total);
+        } else if (seg.estado == EstadoDistraccion.BLOQUEO_SESION && total >= segundosPausa) {
+            seg.estado = EstadoDistraccion.PAUSA_REENFOQUE;
+            notificacion.mostrarAlertaBloqueo(seg.nombre, total);
+            cerrar(clave, seg);
         }
     }
 
     private void cerrar(String clave, SeguimientoActividad seg) {
+        if (killer == null) return;
+
         if (clave.startsWith("SYS|")) {
             String nombreProceso = clave.substring(4);
-            if (killer != null) {
-                killer.cerrarProceso(nombreProceso);
-            }
+            killer.cerrarProceso(nombreProceso);
         } else if (clave.startsWith("WEB|")) {
-            System.out.println("[KILL] Solicitando cierre de pestaña web: " + seg.detalle);
+            if (seg.tabId > 0) {
+                killer.cerrarPestañaNavegador(seg.tabId);
+            } else {
+                System.out.println("[KILL] Solicitando cierre de pestaña web (sin tabId): " + seg.detalle);
+            }
         }
     }
 
@@ -248,10 +257,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         return (s / 60) + "m " + (s % 60) + "s";
     }
 
-    /**
-     * Extracción de dominio con Patterns pre-compilados.
-     * Alineado con DistractionDetector para consistencia de rendimiento.
-     */
     private String extraerDominio(String url) {
         if (url == null) return "Desconocido";
         String sinProtocolo = PROTOCOLO_WWW.matcher(url).replaceAll("");
@@ -259,25 +264,23 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     }
 
     public enum EstadoDistraccion {
-        INICIADA, AVISO_PREVENTIVO, BLOQUEO_SESION, PAUSA_REENFOQUE;
-
-        public boolean puedeAvanzarA(EstadoDistraccion nuevo) {
-            return this.ordinal() < nuevo.ordinal();
-        }
+        INICIADA, AVISO_PREVENTIVO, BLOQUEO_SESION, PAUSA_REENFOQUE
     }
 
     private static class SeguimientoActividad {
         String nombre, detalle, categoria;
         LocalDateTime inicio;
         LocalDateTime ultimaVezVista;
+        int tabId;
         EstadoDistraccion estado = EstadoDistraccion.INICIADA;
 
-        SeguimientoActividad(String nombre, String detalle, String categoria, LocalDateTime inicio) {
+        SeguimientoActividad(String nombre, String detalle, String categoria, LocalDateTime inicio, int tabId) {
             this.nombre = nombre;
             this.detalle = detalle;
             this.categoria = categoria;
             this.inicio = inicio;
             this.ultimaVezVista = inicio;
+            this.tabId = tabId;
         }
     }
 }

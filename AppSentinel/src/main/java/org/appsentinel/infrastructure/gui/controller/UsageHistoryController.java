@@ -15,7 +15,7 @@ import javafx.fxml.Initializable;
  */
 public class UsageHistoryController implements Initializable {
 
-    /**
+    /*
      * Initializes the controller class.
      */
     @Override

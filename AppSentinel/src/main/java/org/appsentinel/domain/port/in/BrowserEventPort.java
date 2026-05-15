@@ -15,5 +15,5 @@ public interface BrowserEventPort {
      * @param url URL completa (ej: "https://www.youtube.com/watch?v=...")
      * @param titulo Título de la pestaña
      */
-    void reportarEventoNavegador(String url, String titulo);
+    void reportarEventoNavegador(String url, String titulo, int tabId);
 }

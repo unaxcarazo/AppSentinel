@@ -4,7 +4,7 @@
 
 <!-- CORRECCIÓN: Apuntar al paquete exacto de la arquitectura hexagonal -->
 <BorderPane xmlns:fx="http://javafx.com/fxml"
-            fx:controller="org.appsentinel.infrastructure.adapter.in.gui.controllers.MainController"
+            fx:controller="org.appsentinel.infrastructure.gui.controller.MainController"
             prefWidth="1200" prefHeight="700">
 
     <!-- SIDEBAR izquierdo -->

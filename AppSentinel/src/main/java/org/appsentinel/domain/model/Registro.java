@@ -2,13 +2,9 @@ package org.appsentinel.domain.model;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-/**
+/*
  * Registro: Entidad principal del dominio.
  * Representa una actividad detectada (app o web) con su duración y clasificación.
- * 
- * @Data = @Getter + @Setter + @ToString + @EqualsAndHashCode
- * @Builder = Permite construir objetos tipo: Registro.builder().nombre("Chrome").build()
- * @NoArgsConstructor / @AllArgsConstructor = Constructores vacío y completo
  */
 public class Registro {
     
@@ -30,7 +26,7 @@ public class Registro {
     public Registro() {
     }
 
-    /**
+    /*
      * Constructor completo con todos los campos.
      */
     public Registro(Long id, String usuarioSistema, String nombreActividad, 
@@ -151,10 +147,10 @@ public class Registro {
     }
 
     // ============================================
-    // BUILDER MANUAL (patrón Builder sin Lombok)
+    // BUILDER MANUAL 
     // ============================================
     
-    /**
+    /*
      * Crea un nuevo builder para construir un Registro paso a paso.
      * Uso: Registro registro = Registro.builder().nombreActividad("Chrome").categoria("NEUTRAL").build();
      */

@@ -114,7 +114,6 @@ public class ProcessMonitorAdapter {
     private String extraerNombre(String ruta) {
         if (ruta == null || ruta.isBlank()) return "desconocido";
         
-        // CORRECCIÓN 2: Sanitización de comillas y carácteres de escape antes del split
         String limpia = ruta.replace("\"", "").trim();
         String sep = limpia.contains("\\") ? "\\\\" : "/";
         String[] partes = limpia.split(sep);

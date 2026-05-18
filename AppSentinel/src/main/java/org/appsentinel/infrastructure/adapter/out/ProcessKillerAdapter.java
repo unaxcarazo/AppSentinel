@@ -34,7 +34,7 @@ public class ProcessKillerAdapter implements KillerPort {
             return false;
         }
 
-        // 1. RESOLUCIÓN DIRECTA POR PID (sin matching por nombre, sin streams de búsqueda)
+        // 1. RESOLUCIÓN DIRECTA POR PID 
         Optional<ProcessHandle> handleOpt = ProcessHandle.of(pid);
         if (handleOpt.isEmpty()) {
             LOGGER.log(Level.WARNING, "[KILL] No existe proceso con PID {0}", pid);

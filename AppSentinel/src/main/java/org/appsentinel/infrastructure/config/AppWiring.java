@@ -67,7 +67,7 @@ public class AppWiring {
         System.out.println("[SHUTDOWN] Iniciando apagado limpio de hilos de infraestructura...");
         
         if (monitorInstance != null) {
-            // Asumiendo que tu monitor tiene un método para detener su bucle nativo
+            // Asumiendo que el monitor tiene un método para detener su bucle nativo
             // monitorInstance.detener(); 
         }
         

@@ -68,7 +68,7 @@ public class AppWiring {
         
         if (monitorInstance != null) {
             // Asumiendo que el monitor tiene un método para detener su bucle nativo
-            // monitorInstance.detener(); 
+             monitorInstance.detener(); 
         }
         
         if (webSocketInstance != null) {

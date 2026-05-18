@@ -1,7 +1,7 @@
 package org.appsentinel;
 
 import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
-import org.appsentinel.infrastructure.config.AppContext;
+
 import org.appsentinel.infrastructure.config.AppWiring;
 
 /**
@@ -27,7 +27,7 @@ public class TestEscritorio {
         System.out.println("Precondición: Seed SQL ejecutado en PostgreSQL.");
         System.out.println("Precondición: Discord clasificado como DISTRACCION en categorias_app.");
         
-        AppContext ctx = AppWiring.construir();
+        AppWiring.construir();
         
         System.out.println("\n>>> ABRE DISCORD AHORA (tienes 5 segundos) <<<");
         Thread.sleep(5000);
@@ -41,11 +41,11 @@ public class TestEscritorio {
         System.out.println("Ejecuta en PostgreSQL para comprobar la persistencia física:");
         System.out.println("  SELECT id, nombre_actividad, categoria, duracion_seg FROM registros_actividad WHERE nombre_actividad LIKE '%discord%';");
         
-        cleanup(ctx);
+        cleanup();
     }
     
-    private static void cleanup(AppContext ctx) {
-        ctx.tracking().finalizar();
+    private static void cleanup() {
+        AppWiring.detenerTodo();
         DatabaseConnection.cerrarPool();
         System.out.println("\n[FIN] Prueba finalizada limpiamente. Consola liberada.");
     }

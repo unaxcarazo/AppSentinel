@@ -1,14 +1,405 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import java.lang.*?>
-<?import java.net.*?>
-<?import java.util.*?>
-<?import javafx.scene.*?>
-<?import javafx.scene.control.*?>
-<?import javafx.scene.layout.*?>
+<?import java.net.URL?>
+<?import javafx.scene.chart.BarChart?>
+<?import javafx.scene.chart.CategoryAxis?>
+<?import javafx.scene.chart.NumberAxis?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
 
-<AnchorPane id="AnchorPane" prefHeight="400.0" prefWidth="600.0" styleClass="mainFxmlClass" xmlns:fx="http://javafx.com/fxml/1" fx:controller=".DashboardController">
-    <stylesheets>
-        <URL value="@/styles/dashboard.css"/>
-    </stylesheets>
-</AnchorPane>
+
+<ScrollPane fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" 
+            style="-fx-background-color: #0d1117;" 
+            xmlns="http://javafx.com/javafx/26" 
+            xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="org.appsentinel.infrastructure.gui.controller.DashboardController">   
+    <content>
+              <VBox spacing="20" styleClass="dashboard-container">
+          
+            <stylesheets>
+                <URL value="@/org/appsentinel/infrastructure/adapter/in/gui/views/styles/dashboard.css" />
+            </stylesheets>
+      
+            <children>
+              
+                <!-- Apartado Encabezado (boton descarga de html y fecha) --> 
+              
+                <HBox alignment="CENTER_LEFT" spacing="20" style="-fx-padding: 0 0 10 0;">
+                    <VBox spacing="5" HBox.hgrow="ALWAYS">
+                        <Label styleClass="dashboard-main-title" text="GENERAL DASHBOARD" />
+                        <Label styleClass="dashboard-subtitle" text="Session metrics and performance overview." />
+                    </VBox>
+      
+                    <Button fx:id="btnDownloadReport" onAction="#handleDownloadReport" styleClass="button-report">
+                        <graphic>
+                            <Label style="-fx-text-fill: white; -fx-padding: 0 5 0 0;" text="📥" />
+                        </graphic>
+                        <text>Descargar informe</text>
+                    </Button>
+      
+                    <HBox alignment="CENTER" spacing="10" styleClass="date-selector-container">
+                        <Button styleClass="button-date-nav" text="&lt;" />
+                        <HBox alignment="CENTER" spacing="8" styleClass="date-display">
+                            <Label style="-fx-font-size: 14;" text="📅" />
+                            <Label styleClass="date-text" text="Hoy" />
+                        </HBox>
+                        <Button styleClass="button-date-nav" text="&gt;" />
+                    </HBox>
+                </HBox>
+              
+                <!-- Apartado Horas (total, de trabajo y distraccion) --> 
+              
+                <HBox spacing="15">
+                    <VBox styleClass="kpi-card" HBox.hgrow="ALWAYS">
+                        <Label styleClass="kpi-title" text="TOTAL HOURS" />
+                        <Label fx:id="lblTotalHours" styleClass="kpi-value" text="08h 14m" />
+                        <Label styleClass="kpi-stat-positive" text="↗ +1.2h vs yesterday" />
+                    </VBox>
+                  
+                    <VBox styleClass="kpi-card, work-card" HBox.hgrow="ALWAYS">
+                        <Label styleClass="kpi-title, text-cian" text="WORK TIME" />
+                        <Label fx:id="lblWorkTime" styleClass="kpi-value" text="06h 25m" />
+                        <ProgressBar maxWidth="Infinity" progress="0.75" styleClass="work-progress" />
+                    </VBox>
+                  
+                    <VBox styleClass="kpi-card, distraction-card" HBox.hgrow="ALWAYS">
+                        <Label styleClass="kpi-title, text-naranja" text="DISTRACTIONS TIME" />
+                        <Label fx:id="lblDistractionTime" styleClass="kpi-value" text="01h 49m" />
+                        <ProgressBar maxWidth="Infinity" progress="0.25" styleClass="distraction-progress" />
+                    </VBox>
+                  
+                    <VBox alignment="CENTER" prefWidth="100" styleClass="kpi-card">
+                        <Label styleClass="kpi-title, text-naranja" text="COUNT" />
+                        <Label fx:id="lblCount" styleClass="kpi-value-large" text="14" />
+                        <Label style="-fx-text-fill: #ff5c00;" text="⚠" />
+                    </VBox>
+                </HBox>
+              
+                <!-- Apartado Grafica de distracciones - tiempo aprovechado  y marcador de rendimiento--> 
+              
+                <HBox spacing="20" VBox.vgrow="ALWAYS">
+                    <VBox styleClass="chart-section" HBox.hgrow="ALWAYS">
+                        <Label styleClass="section-header" text="HOURLY ACTIVITY" />
+                        <BarChart fx:id="barChartActivity" animated="false" styleClass="cyber-chart">
+                            <xAxis>
+                                <CategoryAxis side="BOTTOM" />
+                            </xAxis>
+                            <yAxis>
+                                <NumberAxis side="LEFT" />
+                            </yAxis>
+                        </BarChart>
+                    </VBox>
+                  
+                    <VBox alignment="CENTER" prefWidth="280" spacing="15" styleClass="score-section">
+                        <Label styleClass="section-header" text="PRODUCTIVITY SCORE" />
+                      
+                        <StackPane fx:id="paneScore" maxWidth="140" prefHeight="220" styleClass="phone-frame">
+                            <VBox alignment="BOTTOM_CENTER" styleClass="phone-screen">
+                                <Region fx:id="scoreFill" prefHeight="160" styleClass="score-fill-color" />
+                            </VBox>
+                            <Label fx:id="lblScorePercent" styleClass="score-text-large" text="78%" />
+                        </StackPane>
+                      
+                        <Label styleClass="status-text-excellent" text="EXCELLENT STATUS" />
+                    </VBox>
+                </HBox>
+              
+                  
+                <!-- Apartado Rankings  --> 
+              
+                <!-- TRABAJO -->
+                <HBox prefHeight="300" spacing="20">
+                    <VBox styleClass="ranking-section" HBox.hgrow="ALWAYS">
+                        <Label styleClass="section-header-small" text="TOP 5 WORK APPS" />
+                        <VBox fx:id="vboxTopWork" spacing="10" styleClass="ranking-container">
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#1" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-work">
+                                            <Label style="-fx-font-size: 14;" text="💻" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="VS Code" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="4h 12m" />
+                                    </HBox>
+              
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+                          
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#2" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-work">
+                                            <Label style="-fx-font-size: 14;" text="🎨" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="Figma" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="2h 12m" />
+                                    </HBox>
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+                          
+      
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#3" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-work">
+                                            <Label style="-fx-font-size: 14;" text="📝" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="Notion" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="42m" />
+                                    </HBox>
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+                         
+      
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#4" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-work">
+                                            <Label style="-fx-font-size: 14;" text="💬" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="Slack" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="30m" />
+                                    </HBox>
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+      
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#5" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-work">
+                                            <Label style="-fx-font-size: 14;" text="🌐" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="Chrome (Docs)" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="15m" />
+                                    </HBox>
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+                        </VBox>
+                    </VBox>
+                  
+                    <!-- DISTRACCIONES -->
+                    <VBox styleClass="ranking-section" HBox.hgrow="ALWAYS">
+                        <Label styleClass="section-header-small, text-naranja" text="TOP 5 DISTRACTIONS" />
+                        <VBox fx:id="vboxTopDistractions" spacing="10" styleClass="ranking-container">
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#1" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-distraction">
+                                            <Label style="-fx-font-size: 14;" text="🌐" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="Twitter" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="45m" />
+                                    </HBox>
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+                          
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#2" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-distraction">
+                                            <Label style="-fx-font-size: 14;" text="🎬" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="YouTube" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="25m" />
+                                    </HBox>
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+      
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#3" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-distraction">
+                                            <Label style="-fx-font-size: 14;" text="📸" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="Instagram" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="15m" />
+                                    </HBox>
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+      
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#4" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-distraction">
+                                            <Label style="-fx-font-size: 14;" text="🎧" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="Discord" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="10m" />
+                                    </HBox>
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+      
+                            <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
+                                <Label styleClass="ranking-pos" text="#5" />
+                                <VBox spacing="5" HBox.hgrow="ALWAYS">
+                                    <HBox alignment="CENTER_LEFT" spacing="10">
+                                        <StackPane styleClass="icon-container-distraction">
+                                            <Label style="-fx-font-size: 14;" text="🤖" />
+                                        </StackPane>
+                                        <Label styleClass="app-name" text="Reddit" />
+                                        <Region HBox.hgrow="ALWAYS" />
+                                        <Label styleClass="app-time" text="5m" />
+                                    </HBox>
+                                    <HBox>
+                                        <ProgressBar maxWidth="Infinity" progress="0.9" styleClass="progress-work-thin" HBox.hgrow="ALWAYS" />
+                                    </HBox>
+                                </VBox>
+                            </HBox>
+                        </VBox>
+                    </VBox>
+                </HBox>
+              
+                <!-- Tablas resumen -->
+              
+                <!-- Actividad reciente -->
+                <HBox spacing="20" VBox.vgrow="ALWAYS">
+                    <VBox styleClass="card-base" HBox.hgrow="ALWAYS">
+                        <Label styleClass="section-header-small" text="RECENT ACTIVITY LOG" />
+                        <VBox fx:id="vboxActivityLog" spacing="15" style="-fx-padding: 10 0 0 0;">
+                            <HBox alignment="CENTER_LEFT" spacing="15">
+                                <StackPane styleClass="icon-box, icon-box-cian">
+                                    <Label style="-fx-font-size: 14;" text="💻" />
+                                </StackPane>
+                                <VBox>
+                                    <Label styleClass="log-app-title" text="VS Code" />
+                                    <Label styleClass="log-subtext" text="Started: 14:15" />
+                                </VBox>
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Label styleClass="log-duration" text="45m" />
+                            </HBox>
+                          
+                            <HBox alignment="CENTER_LEFT" spacing="15">
+                                <StackPane styleClass="icon-box, icon-box-naranja">
+                                    <Label style="-fx-font-size: 14;" text="🌐" />
+                                </StackPane>
+                                <VBox>
+                                    <Label styleClass="log-app-title" text="Twitter" />
+                                    <Label styleClass="log-subtext" text="Started: 13:50" />
+                                </VBox>
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Label styleClass="log-duration" text="12m" />
+                            </HBox>
+                          
+                            <HBox alignment="CENTER_LEFT" spacing="15">
+                                <StackPane styleClass="icon-box, icon-box-cian">
+                                    <Label style="-fx-font-size: 14;" text="🎨" />
+                                </StackPane>
+                                <VBox>
+                                    <Label styleClass="log-app-title" text="Figma" />
+                                    <Label styleClass="log-subtext" text="Started: 11:30" />
+                                </VBox>
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Label styleClass="log-duration" text="1h 20m" />
+                            </HBox>
+                          
+                            <HBox alignment="CENTER_LEFT" spacing="15">
+                                <StackPane styleClass="icon-box, icon-box-naranja">
+                                    <Label style="-fx-font-size: 14;" text="🎧" />
+                                </StackPane>
+                                <VBox>
+                                    <Label styleClass="log-app-title" text="Discord" />
+                                    <Label styleClass="log-subtext" text="Started: 11:15" />
+                                </VBox>
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Label styleClass="log-duration" text="5m" />
+                            </HBox>
+                        </VBox>
+                    </VBox>
+      
+                    <!-- Aplicaciones bloqueadas -->
+                  
+                    <VBox HBox.hgrow="ALWAYS" styleClass="card-base">
+                        <Label styleClass="section-header-small" text="BLOCKING LOG" />
+                        <VBox fx:id="vboxBlockingLog" spacing="15" style="-fx-padding: 10 0 0 0;">
+                            <HBox alignment="CENTER_LEFT" spacing="15">
+                                <StackPane styleClass="icon-box, icon-box-naranja">
+                                    <Label style="-fx-font-size: 14;" text="🚫" />
+                                </StackPane>
+                                <VBox>
+                                    <Label styleClass="log-app-title" text="Instagram" />
+                                    <Label styleClass="log-subtext" text="Blocked attempt at 14:30" />
+                                </VBox>
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Label styleClass="badge-blocked" text="BLOCKED" />
+                            </HBox>
+                            <HBox alignment="CENTER_LEFT" spacing="15">
+                                <StackPane styleClass="icon-box, icon-box-naranja">
+                                    <Label style="-fx-font-size: 14;" text="🚫" />
+                                </StackPane>
+                                <VBox>
+                                    <Label styleClass="log-app-title" text="YouTube" />
+                                    <Label styleClass="log-subtext" text="Blocked attempt at 12:15" />
+                                </VBox>
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Label styleClass="badge-blocked" text="BLOCKED" />
+                            </HBox>
+                            <HBox alignment="CENTER_LEFT" spacing="15">
+                                <StackPane styleClass="icon-box, icon-box-naranja">
+                                    <Label style="-fx-font-size: 14;" text="🚫" />
+                                </StackPane>
+                                <VBox>
+                                    <Label styleClass="log-app-title" text="Reddit" />
+                                    <Label styleClass="log-subtext" text="Blocked attempt at 10:00" />
+                                </VBox>
+                                <Region HBox.hgrow="ALWAYS" />
+                                <Label styleClass="badge-blocked" text="BLOCKED" />
+                            </HBox>
+                        </VBox>
+                    </VBox>
+                </HBox>
+            </children>
+        </VBox>
+    </content>
+</ScrollPane>
+    

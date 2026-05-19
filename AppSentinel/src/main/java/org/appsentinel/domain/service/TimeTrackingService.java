@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -65,8 +66,16 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     private static final int SEGUNDOS_AUSENCIA_USUARIO = 300;
     private static final int SEGUNDOS_SIN_RASTRO       = 120;
 
+    // FIX 1: `\.` era una secuencia de escape inválida en Java. El punto literal
+    // en regex debe escaparse doble: `\\.` (primero el String, luego el regex).
     private static final Pattern PROTOCOLO_WWW = Pattern.compile("https?://(www\\.)?");
     private static final Pattern PATH_QUERY    = Pattern.compile("/.*");
+
+    // Navegadores conocidos para resolución jerárquica de foco (WEB prioriza sobre SYS).
+    private static final Set<String> NAVEGADORES = Set.of(
+        "chrome", "msedge", "firefox", "opera", "brave", "vivaldi",
+        "chromium", "safari", "arc", "electron"
+    );
 
     private volatile LocalDateTime ultimoInputUsuario = LocalDateTime.now();
 
@@ -119,6 +128,40 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     }
 
     // -------------------------------------------------------------------------
+    // Utilidades de dominio: jerarquía de foco
+    // -------------------------------------------------------------------------
+
+    /**
+     * Determina si un nombre de proceso corresponde a un navegador web conocido.
+     * Usa coincidencia exacta (sin .exe, en minúsculas) para evitar falsos positivos.
+     */
+    private boolean esProcesoNavegador(String nombreProceso) {
+        if (nombreProceso == null) return false;
+        String n = nombreProceso.toLowerCase().replace(".exe", "");
+        return NAVEGADORES.contains(n);
+    }
+
+    /**
+     * Retorna la clave de la entrada web activa reciente, o null si no existe.
+     *
+     * FIX 2: 'activas' tiene MÁXIMO UNA entrada por invariante de diseño, por lo que
+     * iterar con entrySet() era innecesariamente confuso. Se usa findFirst() para
+     * reflejar con precisión el contrato del mapa y evitar recorridos inútiles.
+     *
+     * Usa la CLAVE del mapa ("WEB|") como fuente de verdad en lugar del nombre,
+     * lo que evita falsos negativos si el título de la pestaña está vacío o cambia.
+     */
+    private String claveWebActivaReciente(LocalDateTime ahora) {
+        Map.Entry<String, SeguimientoActividad> entry = activas.entrySet()
+            .stream().findFirst().orElse(null);
+
+        if (entry == null || !entry.getKey().startsWith("WEB|")) return null;
+
+        long segundos = Duration.between(entry.getValue().ultimaVezVista, ahora).getSeconds();
+        return segundos < 60 ? entry.getKey() : null;
+    }
+
+    // -------------------------------------------------------------------------
     // Procesamiento de actividad
     // -------------------------------------------------------------------------
 
@@ -145,12 +188,39 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
                 }
             }
 
-            // --- Foco activo ---
-            boolean esMismaApp = activas.containsKey(clave);
+            // --- Foco activo con resolución jerárquica ---
+            boolean esMismaApp    = activas.containsKey(clave);
+            boolean esNavegadorSO = clave.startsWith("SYS|") && esProcesoNavegador(nombre);
+
             if (!esMismaApp) {
+                String claveWebActiva = esNavegadorSO ? claveWebActivaReciente(ahora) : null;
+
+                if (claveWebActiva != null) {
+                    // El SO confirma que el navegador sigue en primer plano.
+                    // Refrescamos TANTO el reloj de foco (SeguimientoActividad)
+                    // COMO la sesión de existencia (SesionExistencia) de la entrada web,
+                    // para evitar que purgarSesionesMuertas la elimine por inactividad
+                    // cuando la extensión deja de emitir eventos (pestaña estática,
+                    // corte de WebSocket, etc.).
+                    SeguimientoActividad segWeb = activas.get(claveWebActiva);
+                    if (segWeb != null) {
+                        segWeb.ultimaVezVista = ahora;
+                    }
+
+                    SesionExistencia sesionWeb = sesiones.get(claveWebActiva);
+                    if (sesionWeb != null) {
+                        sesionWeb.ultimaVezVista = ahora;
+                    }
+
+                    System.out.println("[FOCO] Navegador (" + nombre + ") en primer plano. Web mantiene foco.");
+                    return; // No modificamos activas
+                }
+
+                // Cualquier otra app toma el foco legítimamente
                 activas.clear();
                 activas.put(clave, new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid));
                 System.out.println("[FOCO] " + nombre);
+
             } else {
                 SeguimientoActividad seg = activas.get(clave);
                 if (seg != null) {
@@ -337,10 +407,9 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
 
     /**
      * Elimina sesiones de apps que han desaparecido del sistema.
-     *
-     * CORRECCIÓN: antes de eliminar una sesión activa, se persiste su chunk de foco
-     * (SeguimientoActividad.inicio) para no perder el tiempo transcurrido desde
-     * el último flush del ciclo de mantenimiento.
+     * Antes de eliminar, persiste el chunk pendiente respetando el invariante:
+     * - App enfocada → persistirChunkFoco.
+     * - App en segundo plano → persistirChunkExistencia.
      */
     private void purgarSesionesMuertas() {
         List<String> clavesAEliminar = new ArrayList<>();
@@ -383,13 +452,9 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
 
     /**
-     * Cierra el servicio y persiste los chunks pendientes.
-     *
-     * CORRECCIÓN: se aplica el mismo invariante que en el ciclo normal:
-     * - Las apps enfocadas se persisten SOLO via persistirChunkFoco.
-     * - Las apps en segundo plano se persisten SOLO via persistirChunkExistencia.
-     * El orden importa: activas primero para actualizar segundosFocoAcumulado
-     * antes de iterar sesiones (aunque en el cierre no se usa, es más correcto).
+     * Cierra el servicio y persiste los chunks pendientes respetando el invariante:
+     * - Apps enfocadas → persistirChunkFoco (primero).
+     * - Apps en segundo plano → persistirChunkExistencia (excluye las ya persistidas).
      */
     public void finalizar() {
         scheduler.shutdown();
@@ -493,4 +558,3 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         }
     }
 }
-

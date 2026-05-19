@@ -18,4 +18,15 @@ public interface RegistroRepositoryPort {
     List<Registro> obtenerTodosHoy(String usuario);
     
     List<Registro> obtenerPorCategoria(String usuario, String categoria);
+    
+    List<Registro> obtenerTopDistracciones(String usuario, int limite);
+    
+    List<Registro> obtenerTopTrabajo(String usuario, int limite);
+    
+    List<Registro> obtenerActividadHoy(String usuario);
+    
+    List<Registro> obtenerBloqueosHoy(String usuario);
+    
+    List<Registro> obtenerHistorialCompleto();
+
 }

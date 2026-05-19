@@ -11,17 +11,11 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * PostgreSQLCategoriaAdapter: Adaptador de SALIDA para persistencia de
- * categorías.
+ * PostgreSQLCategoriaAdapter: Adaptador de SALIDA para persistencia de categorías.
  *
  * Implementa auto-descubrimiento: cuando una app no existe en la BD, la
  * registra automáticamente como SIN_CLASIFICAR para que el usuario la
  * categorice posteriormente desde la interfaz gráfica.
- *
- * Diseño fusionado: - obtenerCategoria() es autónomo: consulta, y si no existe,
- * registra y retorna SIN_CLASIFICAR. - registrarNuevaAppDesconocida() es
- * público para usos explícitos (UI, imports masivos, tests). - Normalización
- * centralizada en obtenerCategoria() para evitar inconsistencias de búsqueda.
  */
 public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
 
@@ -36,7 +30,8 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
         String normalizado = nombreApp.toLowerCase().trim();
         String sql = "SELECT categoria FROM categorias_app WHERE nombre_app = ?";
 
-        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); 
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, normalizado);
             try (ResultSet rs = ps.executeQuery()) {
@@ -70,7 +65,8 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
             DO UPDATE SET categoria = EXCLUDED.categoria
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); 
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, nombreApp.toLowerCase().trim());
             ps.setString(2, categoria);
@@ -93,7 +89,8 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
             ORDER BY nombre_app ASC
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); 
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, Categoria.SIN_CLASIFICAR);
             try (ResultSet rs = ps.executeQuery()) {
@@ -109,11 +106,6 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
         return apps;
     }
 
-    /**
-     * NUEVO: Consulta apps filtradas por categoría específica. Usado por la
-     * capa de presentación para cargar listas segmentadas (ej: listaTrabajo =
-     * obtenerAppsPorCategoria(Categoria.PRODUCTIVO)).
-     */
     @Override
     public List<String> obtenerAppsPorCategoria(String categoria) {
         if (categoria == null || categoria.isBlank()) {
@@ -128,7 +120,8 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
             ORDER BY nombre_app ASC
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); 
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, categoria);
             try (ResultSet rs = ps.executeQuery()) {
@@ -145,14 +138,12 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
     }
 
     /**
-     * Inserción explícita de auto-descubrimiento.
-     *
-     * Uso principal: invocado internamente por obtenerCategoria() cuando no
-     * encuentra registro. Uso secundario: UI de reclasificación, imports
-     * masivos, scripts de migración, tests unitarios.
-     *
-     * ON CONFLICT DO NOTHING blinda contra condiciones de carrera entre hilos
-     * concurrentes.
+     * Mapeo de compatibilidad por si la interfaz de la vista usa la firma antigua.
+     * Redirige de forma segura a la constante correcta del dominio.
+     */
+    
+    /**
+     * Inserción explícita de auto-descubrimiento blindada contra condiciones de carrera.
      */
     public void registrarNuevaAppDesconocida(String nombreApp) {
         if (nombreApp == null || nombreApp.isBlank()) {
@@ -166,7 +157,8 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
             ON CONFLICT (nombre_app) DO NOTHING
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); 
+             PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, nombreApp.toLowerCase().trim());
             ps.setString(2, Categoria.SIN_CLASIFICAR);
@@ -180,94 +172,4 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
             LOGGER.log(Level.WARNING, "[ERROR] Fallo al insertar la aplicación como SIN_CLASIFICAR", e);
         }
     }
-/*
-    @Override
-    public String obtenerCategoria(String nombreApp) {
-        String sql = """
-            SELECT categoria FROM categorias_app
-            WHERE nombre_app = ?
-            """;
-
-        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, nombreApp);
-            ResultSet rs = ps.executeQuery();
-
-            if (rs.next()) {
-                return rs.getString("categoria");
-            }
-
-            // No existe → insertar como NEUTRAL para que aparezca en la UI
-            insertarNeutral(nombreApp);
-            return "NEUTRAL";
-
-        } catch (SQLException e) {
-            System.err.println("Error al obtener categoría: " + e.getMessage());
-            return "NEUTRAL";
-        }
-    }
-
-    @Override
-    public void guardarCategoria(String nombreApp, String categoria) {
-        String sql = """
-            INSERT INTO categorias_app (nombre_app, categoria)
-            VALUES (?, ?)
-            ON CONFLICT (nombre_app)
-            DO UPDATE SET categoria = EXCLUDED.categoria
-            """;
-
-        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, nombreApp);
-            ps.setString(2, categoria);
-            ps.executeUpdate();
-
-        } catch (SQLException e) {
-            System.err.println("Error al guardar categoría: " + e.getMessage());
-        }
-    }
-*/
-    @Override
-    public List<String> obtenerAppsNoClasificadas() {
-        List<String> apps = new ArrayList<>();
-        String sql = """
-            SELECT nombre_app FROM categorias_app
-            WHERE categoria = 'NEUTRAL'
-            ORDER BY nombre_app
-            """;
-
-        try (Connection conn = DatabaseConnection.getConnection(); Statement stmt = conn.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
-
-            while (rs.next()) {
-                apps.add(rs.getString("nombre_app"));
-            }
-
-        } catch (SQLException e) {
-            System.err.println("Error al obtener apps sin clasificar: " + e.getMessage());
-        }
-
-        return apps;
-    }
-
-    /**
-     * Inserta una app nueva como NEUTRAL para que el usuario pueda clasificarla
-     * desde la UI.
-     */
-    private void insertarNeutral(String nombreApp) {
-        String sql = """
-            INSERT INTO categorias_app (nombre_app, categoria)
-            VALUES (?, 'NEUTRAL')
-            ON CONFLICT (nombre_app) DO NOTHING
-            """;
-
-        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setString(1, nombreApp);
-            ps.executeUpdate();
-
-        } catch (SQLException e) {
-            System.err.println("Error al insertar app neutral: " + e.getMessage());
-        }
-    }
-
 }

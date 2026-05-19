@@ -17,8 +17,9 @@ import javafx.scene.layout.VBox;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.appsentinel.infrastructure.config.AppContext;
 
-public class UsageHistoryController {
+public class UsageHistoryController implements Controllable {
 
     private RegistroRepositoryPort registroRepository;
 
@@ -48,33 +49,7 @@ public class UsageHistoryController {
         comboFilter.valueProperty().addListener((observable, oldValue, newValue) -> aplicarFiltrosCombinados());
     }
 
-    /**
-     * Inicializa el controlador con el repositorio real e inyectado desde el
-     * MainController.
-     */
-    public void init(RegistroRepositoryPort repositorioInyectado) {
-        // 1. Guardamos el repositorio vivo de la aplicación
-        this.registroRepository = repositorioInyectado;
-
-        // 2. Extraemos el usuario del sistema operativo de forma segura
-        String usuarioActual = System.getProperty("user.name");
-        if (usuarioActual == null) {
-            usuarioActual = "DAW1";
-        }
-
-        // ====================================================================
-        // 🔄 CAMBIO: Carga de datos real trasladada desde initialize() a init()
-        // ====================================================================
-        // Nota: Si tu puerto 'obtenerHistorialCompleto' requiere el usuario por parámetro, 
-        // puedes cambiarlo a: registroRepository.obtenerHistorialCompleto(usuarioActual);
-        this.listaCompletaMaster = registroRepository.obtenerHistorialCompleto();
-
-        // Renderizamos la tabla por primera vez con los datos limpios de la base de datos
-        actualizarTabla(this.listaCompletaMaster);
-
-        System.out.println("⏳ UsageHistory cargado con éxito usando el repositorio: "
-                + registroRepository.getClass().getSimpleName());
-    }
+    
 
     private void aplicarFiltrosCombinados() {
         // Evitamos fallos si el usuario busca antes de que se complete el método init()
@@ -192,5 +167,27 @@ public class UsageHistoryController {
         long minutes = (segundosTotales % 3600) / 60;
         return String.format("%02dh %02dm", horas, minutes);
     }
+
+    // =========================================================================
+    // 🔄 MÉTODO DE INICIALIZACIÓN CONTRATADO POR LA INTERFAZ CONTROLLABLE
+    // =========================================================================
+    @Override
+    public void init(AppContext ctx) {
+        // 1. Extraemos el puerto de registros desde el contexto unificado de tu compañera
+        this.registroRepository = ctx.repositorio();
+
+        // 2. Extraemos el usuario del sistema operativo de forma segura (tu lógica original)
+        String usuarioActual = System.getProperty("user.name");
+        if (usuarioActual == null) {
+            usuarioActual = "DAW1";
+        }
+
+        // 3. Cargamos los datos reales desde la base de datos de PostgreSQL
+        this.listaCompletaMaster = registroRepository.obtenerHistorialCompleto();
+
+        // 4. Renderizamos la tabla elástica por primera vez
+        actualizarTabla(this.listaCompletaMaster);
+
+        System.out.println("⏳ UsageHistory cargado con éxito en el ecosistema del grupo usando AppContext.");
+    }
 }
- 

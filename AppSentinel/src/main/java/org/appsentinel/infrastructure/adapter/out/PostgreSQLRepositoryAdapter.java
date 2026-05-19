@@ -231,4 +231,24 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         }
         return registros;
     }
+
+    @Override
+    public List<Registro> obtenerHistorialCompleto() {
+        List<Registro> historial = new ArrayList<>();
+        // Tu consulta SQL para traer todos los registros ordenados por la fecha más reciente
+        String sql = "SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro "
+                + "FROM registros ORDER BY fecha_registro DESC";
+
+        // NOTA: Como estás usando una arquitectura limpia, aquí meterías tu lógica nativa de JDBC
+        // o el framework que estés usando (Connection, PreparedStatement, ResultSet, etc.)
+        // para mapear las filas de PostgreSQL a objetos 'Registro'.
+        try {
+            // Tu lógica de conexión...
+            // Mientras tanto, puedes dejarlo devolviendo una lista vacía o lanzar una excepción simulada
+        } catch (Exception e) {
+            System.err.println("Error al obtener el historial de PostgreSQL: " + e.getMessage());
+        }
+
+        return historial;
+    }
 }

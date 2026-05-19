@@ -3,112 +3,107 @@ package org.appsentinel.infrastructure.gui.controller;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
-import javafx.scene.layout.AnchorPane;
+import javafx.scene.layout.StackPane;
 import org.appsentinel.domain.port.out.CategoriaRepositoryPort;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 import org.appsentinel.domain.service.TimeTrackingService;
 
 import java.io.IOException;
-import javafx.event.ActionEvent;
-import javafx.scene.Node;
 
 public class MainController {
 
     @FXML
-    private AnchorPane contenedor;
+    private StackPane contenedor;
 
-    // Dependencias que vienen de AppWiring via AppSentinel
+    // Dependencias globales inyectadas desde AppWiring via AppSentinel
     private TimeTrackingService tracking;
     private RegistroRepositoryPort repositorio;
     private CategoriaRepositoryPort categorias;
 
-    /**
-     * AppSentinel llama esto justo después de cargar main.fxml. Inyecta las
-     * dependencias y carga la vista por defecto.
-     */
-    public void init(TimeTrackingService tracking,
-            RegistroRepositoryPort repositorio,
-            CategoriaRepositoryPort categorias) {
-        this.tracking = tracking;
-        this.repositorio = repositorio;
-        this.categorias = categorias;
-        onDashboard(); // vista por defecto al arrancar
+    public MainController() {
+        // Constructor vacío para JavaFX
     }
 
+    /**
+     * Inicializa el controlador principal distribuyendo el cableado de la
+     * arquitectura hexagonal.
+     */
+    public void init(TimeTrackingService tracking, RegistroRepositoryPort repo, CategoriaRepositoryPort cat) {
+        this.tracking = tracking;
+        this.repositorio = repo;
+        this.categorias = cat;
+
+        System.out.println("✅ MainController cableado con éxito. Repositorio listo: " + (this.repositorio != null));
+
+        // CARGA INICIAL: Cargamos el Dashboard por defecto tras asegurar que las dependencias existen
+        onDashboard();
+    }
+
+    // ====================================================================
+    // 🛠️ CONTROLADORES DE EVENTOS DEL MENÚ LATERAL (Mapeados con Main.fxml)
+    // ====================================================================
     @FXML
     public void onDashboard() {
-        cargarVista("dashboard");
+        cargarVista("Dashboard");
     }
 
     @FXML
     public void onAppBlocker() {
-        cargarVista("appblocker");
+        cargarVista("AppBlocker");
     }
 
     @FXML
     public void onPerformance() {
-        cargarVista("performance");
+        cargarVista("Performance");
     }
 
     @FXML
     public void onHistory() {
-        cargarVista("usagehistory");
+        cargarVista("UsageHistory");
     }
 
     @FXML
     public void onDeepFocus() {
-        /* lógica modo focus */ }
-
-    private void cargarVista(String nombre) {
-        try {
-            FXMLLoader loader = new FXMLLoader(
-                    getClass().getResource(
-                            "/org/appsentinel/fxml/" + nombre + ".fxml"));
-            Parent vista = loader.load();
-
-            // Inyectar dependencias al controlador de la vista
-          /*  Object ctrl = loader.getController();
-            if (ctrl instanceof DashboardController dc) {
-                dc.init(repositorio);
-            } else if (ctrl instanceof AppBlockerController ab) {
-                ab.init(categorias);
-            } else if (ctrl instanceof PerformanceController pc) {
-                pc.init(tracking);
-            } else if (ctrl instanceof UsageHistoryController uh) {
-                uh.init(repositorio);
-            }*/
-
-            // Ajustar la vista al tamaño del contenedor
-            AnchorPane.setTopAnchor(vista, 0.0);
-            AnchorPane.setBottomAnchor(vista, 0.0);
-            AnchorPane.setLeftAnchor(vista, 0.0);
-            AnchorPane.setRightAnchor(vista, 0.0);
-
-            contenedor.getChildren().setAll(vista);
-
-        } catch (IOException e) {
-            System.err.println("Error cargando vista: " + nombre);
-            e.printStackTrace();
-        }
+        System.out.println("🔥 Modo Deep Focus activado desde el menú lateral.");
+        // Aquí podéis inyectar vuestro servicio de bloqueo extremo ("tracking.activarBloqueoAbsoluto()")
     }
 
-    @FXML
-    private void onDashboard(ActionEvent event) {
+    // ⚙️ MOTOR CENTRALIZADO DE CARGA DINÁMICA
+    
+    private void cargarVista(String nombre) {
         try {
-            // Cargamos tu vista desde la ruta de recursos
-            Node vistaDashboard = FXMLLoader.load(getClass().getResource("/org/appsentinel/infrastructure/adapter/in/gui/views/Dashboard.fxml"));
+            // Generamos la ruta basándonos en la estructura de paquetes de vuestro grupo
+            String rutaFxml = "/org/appsentinel/infrastructure/adapter/in/gui/views/" + nombre + ".fxml";
+            java.net.URL fxmlUrl = getClass().getResource(rutaFxml);
 
-            // Limpiamos lo que haya en el centro y ponemos tu Dashboard
-            contenedor.getChildren().setAll(vistaDashboard);
+            if (fxmlUrl == null) {
+                System.err.println("❌ ERROR: No se encuentra el archivo FXML en la ruta: " + rutaFxml);
+                return;
+            }
 
-            // Ajustamos para que tu Dashboard ocupe todo el AnchorPane
-            AnchorPane.setTopAnchor(vistaDashboard, 0.0);
-            AnchorPane.setBottomAnchor(vistaDashboard, 0.0);
-            AnchorPane.setLeftAnchor(vistaDashboard, 0.0);
-            AnchorPane.setRightAnchor(vistaDashboard, 0.0);
+            FXMLLoader loader = new FXMLLoader(fxmlUrl);
+            Parent vista = loader.load();
+
+            // INYECCIÓN DE DEPENDENCIAS CRUCIAL ENTRE MIEMBROS DEL GRUPO
+            Object ctrl = loader.getController();
+
+            if (ctrl instanceof DashboardController dc) {
+                dc.init(this.repositorio); // Le pasamos el repositorio real al Dashboard de tu compañero
+            } else if (ctrl instanceof UsageHistoryController uh) {
+                uh.init(this.repositorio); // Le pasamos el mismo repositorio real a tu Usage History
+            }
+            // NOTA PARA EL GRUPO: A medida que tus compañeros terminen sus controladores,
+            // simplemente añade sus bloques correspondientes aquí:
+            // else if (ctrl instanceof AppBlockerController abc) { abc.init(this.categorias); }
+
+            // Al usar StackPane, simplemente limpiamos el centro e inyectamos la vista.
+            // Automáticamente se expandirá al 100% del ancho y alto sin necesidad de usar anclas manuales.
+            contenedor.getChildren().setAll(vista);
+            System.out.println("🖥️ Subvista [" + nombre + "] incrustada correctamente.");
 
         } catch (IOException e) {
-            System.err.println("Error al cargar el Dashboard: " + e.getMessage());
+            System.err.println("❌ Error crítico cargando la subvista dinámica: " + nombre);
+            e.printStackTrace();
         }
     }
 }

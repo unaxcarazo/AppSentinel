@@ -23,7 +23,7 @@
               <VBox spacing="20" styleClass="dashboard-container">
           
             <stylesheets>
-                <URL value="@/styles/dashboard.css" />
+                <URL value="@/org/appsentinel/infrastructure/adapter/in/gui/views/styles/dashboard.css" />
             </stylesheets>
       
             <children>

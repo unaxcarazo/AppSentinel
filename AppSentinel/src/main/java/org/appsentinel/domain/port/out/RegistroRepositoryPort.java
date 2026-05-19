@@ -26,4 +26,6 @@ public interface RegistroRepositoryPort {
     List<Registro> obtenerActividadHoy(String usuario);
     
     List<Registro> obtenerBloqueosHoy(String usuario);
+    
+    List<Registro> obtenerHistorialCompleto();
 }

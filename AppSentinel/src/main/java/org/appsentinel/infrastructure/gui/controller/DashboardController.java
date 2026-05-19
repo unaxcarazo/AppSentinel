@@ -20,13 +20,15 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
-import org.appsentinel.infrastructure.adapter.out.FakeRegistroAdapter;
-import org.appsentinel.infrastructure.adapter.out.PostgreSQLRepositoryAdapter;
+//import org.appsentinel.infrastructure.adapter.out.PostgreSQLRepositoryAdapter;
 
 public class DashboardController implements Initializable {
 
     private static final double LIMITE_TRABAJO_SEG = 5 * 3600; // 5 horas en segundos
     private static final double LIMITE_DISTRACCION_SEG = 1 * 3600; // 1 hora en segundos
+
+    @FXML
+    private Region scoreFill;
 
     @FXML
     private VBox vboxTopWork;
@@ -42,7 +44,7 @@ public class DashboardController implements Initializable {
 
     // Comenta la línea de PostgreSQL y usa la de Fake
     // private RegistroRepositoryPort repository = new PostgreSQLRepositoryAdapter();
-    private RegistroRepositoryPort repository = new FakeRegistroAdapter();
+    private RegistroRepositoryPort repository;
 
     // Declaración de elementos FXML
     @FXML
@@ -58,61 +60,43 @@ public class DashboardController implements Initializable {
     @FXML
     private BarChart<String, Number> barChartActivity;
 
-    @Override
-    public void initialize(URL url, ResourceBundle rb) {
+    public void init(RegistroRepositoryPort repositorioInyectado) {
+        // 1. Guardamos el repositorio vivo que nos envía el MainController desde el AppWiring
+        this.repository = repositorioInyectado;
 
-        String usuarioActual = System.getProperty("DAW1");
+        String usuarioActual = System.getProperty("user.name"); // 'user.name' es el estándar de Java para sacar el usuario del S.O.
+        if (usuarioActual == null) {
+            usuarioActual = "DAW1";
+        }
 
-        // 1. Cargar datos reales desde la base de datos
+        // 2. Ejecutamos la carga de datos usando el repositorio inyectado
         List<Registro> topTrabajo = repository.obtenerTopTrabajo(usuarioActual, 5);
         List<Registro> topDistracciones = repository.obtenerTopDistracciones(usuarioActual, 5);
         List<Registro> actividad = repository.obtenerActividadHoy(usuarioActual);
         List<Registro> bloqueos = repository.obtenerBloqueosHoy(usuarioActual);
 
-        // 2. "Pintar" los datos en la interfaz
+        // 3. "Pintamos" los datos reales en la interfaz
         actualizarCards(actividad);
         actualizarRankingTrabajo(topTrabajo);
         actualizarRankingDistracciones(topDistracciones);
         actualizarLogActividad(actividad);
         actualizarLogBloqueos(bloqueos);
 
-        // 3. Configurar el gráfico (Aquí puedes dejar los datos de prueba o crear una serie real)
+        // 4. Configurar el gráfico multicolor
         actualizarGraficoReal(actividad);
-        System.out.println("Dashboard inicializado con datos reales de: " + usuarioActual);
+        System.out.println("🚀 Dashboard cargado con éxito usando el repositorio: "
+                + "" + repository.getClass().getSimpleName());
+    }
 
-        /* 1. Asignar valores de prueba a las tarjetas
-        lblTotalHours.setText("08h 14m");
-        lblWorkTime.setText("06h 25m");
-        lblDistractionTime.setText("01h 49m");
-        lblCount.setText("14");
-        lblScorePercent.setText("78%");
-        
-        // 2. Configurar el gráfico multicolor
-        XYChart.Series<String, Number> serieTrabajo = new XYChart.Series<>();
-        serieTrabajo.setName("Trabajo");
-        serieTrabajo.getData().add(new XYChart.Data<>("09:00", 45));
-        serieTrabajo.getData().add(new XYChart.Data<>("10:00", 50));
-        serieTrabajo.getData().add(new XYChart.Data<>("11:00", 30));
-
-        XYChart.Series<String, Number> serieDistraccion = new XYChart.Series<>();
-        serieDistraccion.setName("Distracción");
-        serieDistraccion.getData().add(new XYChart.Data<>("09:00", 10));
-        serieDistraccion.getData().add(new XYChart.Data<>("10:00", 15));
-        serieDistraccion.getData().add(new XYChart.Data<>("11:00", 25));
-        
-        
-        // Añadir ambas series para que el CSS coloree cian y naranja
-        barChartActivity.getData().addAll(serieTrabajo, serieDistraccion);
-         */
+    @Override
+    public void initialize(URL url, ResourceBundle rb) {
         System.out.println("Dashboard inicializado con patrón de colores Cyber-Dark.");
     }
 
     // PRUEBAS  
     private void cargarLogs() {
         vboxActivityLog.getChildren().clear(); // ¡ESTA LÍNEA ES CLAVE!
-        vboxBlockingLog.getChildren().clear(); // Borra los ejemplos del FXML
-
-        // ... luego el resto del código que añade los registros ...
+        vboxBlockingLog.getChildren().clear();
     }
 
     @FXML
@@ -137,6 +121,10 @@ public class DashboardController implements Initializable {
     }
 
     private void actualizarRankingTrabajo(List<Registro> topWorkApps) {
+        if (topWorkApps == null || topWorkApps.isEmpty()) {
+            vboxTopWork.getChildren().add(new Label("No hay registros aún"));
+            return;
+        }
         vboxTopWork.getChildren().clear();
 
         int pos = 1;
@@ -196,6 +184,10 @@ public class DashboardController implements Initializable {
     }
 
     private void actualizarRankingDistracciones(List<Registro> topDistractionApps) {
+        if (topDistractionApps == null || topDistractionApps.isEmpty()) {
+            vboxTopWork.getChildren().add(new Label("No hay registros aún"));
+            return;
+        }
         vboxTopDistractions.getChildren().clear();
 
         int pos = 1;
@@ -263,14 +255,21 @@ public class DashboardController implements Initializable {
 
     private void actualizarLogActividad(List<Registro> registros) {
         vboxActivityLog.getChildren().clear();
+        if (registros == null) {
+            return;
+        }
 
         for (Registro r : registros) {
+            // ESCUDO: Si falta la fecha o la actividad en la BD, saltamos la fila para no romper
+            if (r.getFechaRegistro() == null || r.getNombreActividad() == null) {
+                continue;
+            }
+
             HBox row = new HBox();
             row.getStyleClass().add("log-row");
             row.setAlignment(Pos.CENTER_LEFT);
             row.setSpacing(15);
 
-            // Determinamos el icono y color según categoría
             String emoji = "TRABAJO".equalsIgnoreCase(r.getCategoria()) ? "💻" : "🌐";
             String estiloIcono = "TRABAJO".equalsIgnoreCase(r.getCategoria()) ? "icon-box-cian" : "icon-box-naranja";
 
@@ -281,8 +280,12 @@ public class DashboardController implements Initializable {
             Label appName = new Label(r.getNombreActividad());
             appName.getStyleClass().add("log-app-title");
 
-            // Mostramos la hora de inicio del registro
-            Label detail = new Label("Started: " + r.getFechaRegistro().toLocalTime().toString().substring(0, 5));
+            // Formateo seguro de la hora
+            String horaFormateada = r.getFechaRegistro().toLocalTime().toString();
+            if (horaFormateada.length() >= 5) {
+                horaFormateada = horaFormateada.substring(0, 5);
+            }
+            Label detail = new Label("Started: " + horaFormateada);
             detail.getStyleClass().add("log-subtext");
             textData.getChildren().addAll(appName, detail);
 
@@ -299,21 +302,29 @@ public class DashboardController implements Initializable {
 
     private void actualizarLogBloqueos(List<Registro> bloqueos) {
         vboxBlockingLog.getChildren().clear();
+        if (bloqueos == null) {
+            return;
+        }
 
         for (Registro b : bloqueos) {
+            // ESCUDO: Evita el NullPointerException si Postgres devuelve una fecha vacía
+            if (b.getFechaRegistro() == null || b.getNombreActividad() == null) {
+                continue;
+            }
+
             HBox row = new HBox();
             row.getStyleClass().add("log-row");
             row.setAlignment(Pos.CENTER_LEFT);
             row.setSpacing(15);
 
-            // Icono escudo
             StackPane iconBox = new StackPane(new Label("🛡"));
             iconBox.getStyleClass().addAll("icon-box", "icon-box-naranja");
 
             VBox textData = new VBox();
             Label appName = new Label(b.getNombreActividad());
             appName.getStyleClass().add("log-app-title");
-            Label detail = new Label("Blocked attempt at " + b.getFechaRegistro().toLocalTime());
+
+            Label detail = new Label("Blocked attempt at " + b.getFechaRegistro().toLocalTime().toString().substring(0, 5));
             detail.getStyleClass().add("log-subtext");
             textData.getChildren().addAll(appName, detail);
 
@@ -332,26 +343,46 @@ public class DashboardController implements Initializable {
      * Calcula los totales y actualiza las tarjetas superiores (KPIs).
      */
     private void actualizarCards(List<Registro> registros) {
-        long totalSegundosTrabajo = registros.stream()
-                .filter(r -> "TRABAJO".equalsIgnoreCase(r.getCategoria()))
-                .mapToLong(Registro::getDuracionSeg).sum();
+        // ESCUDO 1: Si la lista viene completamente vacía o nula, reseteamos a cero y salimos de inmediato
+        if (registros == null || registros.isEmpty()) {
+            lblWorkTime.setText("00h 00m");
+            lblDistractionTime.setText("00h 00m");
+            lblTotalHours.setText("00h 00m");
+            lblCount.setText("0");
+            lblScorePercent.setText("0%");
+            return;
+        }
 
-        long totalSegundosDistraccion = registros.stream()
-                .filter(r -> "DISTRACCION".equalsIgnoreCase(r.getCategoria()))
-                .mapToLong(Registro::getDuracionSeg).sum();
+        // ESCUDO 2: Filtramos y sumamos de forma clásica y segura, saltando cualquier fila corrupta
+        long totalSegundosTrabajo = 0;
+        long totalSegundosDistraccion = 0;
+
+        for (Registro r : registros) {
+            if (r == null || r.getCategoria() == null) {
+                continue; // Si el registro o su categoría son nulos, lo ignoramos de forma segura
+            }
+
+            if ("TRABAJO".equalsIgnoreCase(r.getCategoria())) {
+                totalSegundosTrabajo += r.getDuracionSeg();
+            } else if ("DISTRACCION".equalsIgnoreCase(r.getCategoria())) {
+                totalSegundosDistraccion += r.getDuracionSeg();
+            }
+        }
 
         long totalSegundos = totalSegundosTrabajo + totalSegundosDistraccion;
 
-        // Actualizamos los Labels con los datos reales
+        // Actualizamos los Labels con los datos calculados de forma segura
         lblWorkTime.setText(formatearTiempo(totalSegundosTrabajo));
         lblDistractionTime.setText(formatearTiempo(totalSegundosDistraccion));
         lblTotalHours.setText(formatearTiempo(totalSegundos));
         lblCount.setText(String.valueOf(registros.size()));
 
-        // El Score de productividad (ejemplo simple: % de trabajo sobre el total)
+        //  CÓDIGO MODIFICADO (Calcula la fracción y anima la batería)
         if (totalSegundos > 0) {
-            int score = (int) ((totalSegundosTrabajo * 100) / totalSegundos);
-            lblScorePercent.setText(score + "%");
+            double scoreFraccion = (double) totalSegundosTrabajo / totalSegundos; // Ej: 0.78
+            updateProductivityScore(scoreFraccion); // Actualiza el texto Y sube/baja la barra cian
+        } else {
+            updateProductivityScore(0.0);
         }
     }
 
@@ -366,6 +397,9 @@ public class DashboardController implements Initializable {
 
     private void actualizarGraficoReal(List<Registro> registros) {
         barChartActivity.getData().clear();
+        if (registros == null || registros.isEmpty()) {
+            return;
+        }
 
         XYChart.Series<String, Number> seriesWork = new XYChart.Series<>();
         seriesWork.setName("Trabajo");
@@ -373,19 +407,46 @@ public class DashboardController implements Initializable {
         XYChart.Series<String, Number> seriesDist = new XYChart.Series<>();
         seriesDist.setName("Distracción");
 
-        // Agrupamos datos de forma simplificada por hora de inicio
+        // Mapas para agrupar y acumular minutos por cada hora ("08:00", "09:00", etc.)
+        java.util.Map<String, Double> acumuladoTrabajo = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Double> acumuladoDistraccion = new java.util.LinkedHashMap<>();
+
         for (Registro r : registros) {
+            if (r.getFechaRegistro() == null || r.getCategoria() == null) {
+                continue;
+            }
+
             String hora = r.getFechaRegistro().toLocalTime().toString().substring(0, 2) + ":00";
             double minutos = r.getDuracionSeg() / 60.0;
 
             if ("TRABAJO".equalsIgnoreCase(r.getCategoria())) {
-                seriesWork.getData().add(new XYChart.Data<>(hora, minutos));
+                acumuladoTrabajo.put(hora, acumuladoTrabajo.getOrDefault(hora, 0.0) + minutos);
             } else {
-                seriesDist.getData().add(new XYChart.Data<>(hora, minutos));
+                acumuladoDistraccion.put(hora, acumuladoDistraccion.getOrDefault(hora, 0.0) + minutos);
             }
         }
 
-        barChartActivity.getData().addAll(seriesWork, seriesDist);
+        // Pasamos los datos agrupados a las series de JavaFX
+        acumuladoTrabajo.forEach((hora, mins) -> seriesWork.getData().add(new XYChart.Data<>(hora, mins)));
+        acumuladoDistraccion.forEach((hora, mins) -> seriesDist.getData().add(new XYChart.Data<>(hora, mins)));
+
+        if (!seriesWork.getData().isEmpty()) {
+            barChartActivity.getData().add(seriesWork);
+        }
+        if (!seriesDist.getData().isEmpty()) {
+            barChartActivity.getData().add(seriesDist);
+        }
     }
 
+    public void updateProductivityScore(double score) {
+        // 1. Blindaje contra desbordamientos (mínimo 0%, máximo 100%)
+        double sanitizedScore = Math.max(0.0, Math.min(1.0, score));
+
+        // 2. Formateo y renderizado de texto instantáneo
+        lblScorePercent.setText((int) (sanitizedScore * 100) + "%");
+
+        // 3. Modificación del alto proporcional de la barra azul/cian
+        double maxHeight = 160.0;
+        scoreFill.setPrefHeight(maxHeight * sanitizedScore);
+    }
 }

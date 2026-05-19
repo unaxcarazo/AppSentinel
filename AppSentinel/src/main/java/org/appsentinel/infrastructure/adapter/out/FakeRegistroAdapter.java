@@ -71,4 +71,21 @@ public class FakeRegistroAdapter implements RegistroRepositoryPort {
                 .build());
         return bloqueos;
     }
+
+    // CORREGIDO: Cambiado RegistroDominio por Registro y usando el Builder manual
+    @Override
+    public List<Registro> obtenerHistorialCompleto() {
+      // return new java.util.ArrayList<>();
+        
+        List<Registro> lista = new ArrayList<>();
+
+        lista.add(Registro.builder().nombreActividad("VS Code").categoria("TRABAJO").duracionSeg(8100).fechaRegistro(LocalDateTime.now().minusHours(5)).detalle("ALLOWED").build());
+        lista.add(Registro.builder().nombreActividad("Figma").categoria("TRABAJO").duracionSeg(5445).fechaRegistro(LocalDateTime.now().minusHours(3)).detalle("ALLOWED").build());
+        lista.add(Registro.builder().nombreActividad("Twitter").categoria("DISTRACCION").duracionSeg(0).fechaRegistro(LocalDateTime.now().minusHours(2)).detalle("BLOCKED").build());
+        lista.add(Registro.builder().nombreActividad("Notion").categoria("TRABAJO").duracionSeg(2710).fechaRegistro(LocalDateTime.now().minusHours(1)).detalle("ALLOWED").build());
+        lista.add(Registro.builder().nombreActividad("Instagram").categoria("DISTRACCION").duracionSeg(0).fechaRegistro(LocalDateTime.now().minusMinutes(45)).detalle("BLOCKED").build());
+        lista.add(Registro.builder().nombreActividad("Slack").categoria("TRABAJO").duracionSeg(15150).fechaRegistro(LocalDateTime.now().minusMinutes(15)).detalle("ALLOWED").build());
+        
+        return lista;
+    }
 }

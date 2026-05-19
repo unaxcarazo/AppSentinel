@@ -8,21 +8,21 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Level;
+
 import java.util.logging.Logger;
 
 /**
- * PostgreSQLRepositoryAdapter: Adaptador de SALIDA para la persistencia del historial.
- * 
- * Registra y extrae las métricas de consumo de tiempo acumuladas en los hilos del dominio.
- * 
- * FIX: Trunca campos de texto que excedan los límites de la BD para evitar
- * PSQLException: "el valor es demasiado largo para el tipo character varying(N)".
+ * PostgreSQLRepositoryAdapter: Adaptador de SALIDA para la persistencia del
+ * historial.
+ *
+ * Registra y extrae las métricas de consumo de tiempo acumuladas en los hilos
+ * del dominio.
  */
 public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
     private static final Logger LOGGER = Logger.getLogger(PostgreSQLRepositoryAdapter.class.getName());
 
-    // Límites de columnas en PostgreSQL (ajustar según el DDL real)
+    // Límites de columnas en PostgreSQL
     private static final int LIMITE_NOMBRE_ACTIVIDAD = 255;
     private static final int LIMITE_CATEGORIA = 100;
     private static final int LIMITE_DETALLE = 500;
@@ -30,7 +30,9 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
     @Override
     public void guardar(Registro registro) {
-        if (registro == null) return;
+        if (registro == null) {
+            return;
+        }
 
         String sql = """
             INSERT INTO registros_actividad 
@@ -38,8 +40,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             VALUES (?, ?, ?, ?, ?, ?)
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
             stmt.setString(1, truncar(registro.getUsuarioSistema(), LIMITE_USUARIO));
             stmt.setString(2, truncar(registro.getNombreActividad(), LIMITE_NOMBRE_ACTIVIDAD));
@@ -56,8 +57,8 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
                 }
             }
 
-            LOGGER.log(Level.INFO, "[PERSISTENCIA] Registro guardado en PostgreSQL: {0} ({1}s)", 
-                new Object[]{truncar(registro.getNombreActividad(), 50), registro.getDuracionSeg()});
+            LOGGER.log(Level.INFO, "[PERSISTENCIA] Registro guardado en PostgreSQL: {0} ({1}s)",
+                    new Object[]{truncar(registro.getNombreActividad(), 50), registro.getDuracionSeg()});
 
         } catch (SQLException e) {
             LOGGER.log(Level.SEVERE, "[ERROR] Fallo crítico al insertar registro de actividad en la base de datos", e);
@@ -75,8 +76,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             ORDER BY fecha_registro DESC
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setString(1, usuario);
             try (ResultSet rs = stmt.executeQuery()) {
@@ -103,8 +103,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             ORDER BY duracion_seg DESC
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setString(1, usuario);
             stmt.setString(2, categoria);
@@ -121,9 +120,148 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         return registros;
     }
 
-    /**
-     * Mapeo tradicional mediante instanciación estándar y setters.
-     */
+    @Override
+    public List<Registro> obtenerTopDistracciones(String usuario, int limite) {
+        List<Registro> registros = new ArrayList<>();
+        String sql = """
+            SELECT nombre_actividad, SUM(duracion_seg) as total_seg, categoria 
+            FROM registros_actividad 
+            WHERE usuario_sistema = ? AND categoria = 'DISTRACCION'
+            AND DATE(fecha_registro) = CURRENT_DATE
+            GROUP BY nombre_actividad, category = categoria -- Nota: Ajustado sintaxis GROUP BY estándar
+            GROUP BY nombre_actividad, categoria
+            ORDER BY total_seg DESC
+            LIMIT ?
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+            stmt.setInt(2, limite);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(Registro.builder()
+                            .nombreActividad(rs.getString("nombre_actividad"))
+                            .duracionSeg(rs.getLong("total_seg"))
+                            .categoria(rs.getString("categoria"))
+                            .build());
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener ranking de distracciones", e);
+        }
+        return registros;
+    }
+
+    @Override
+    public List<Registro> obtenerActividadHoy(String usuario) {
+        List<Registro> registros = new ArrayList<>();
+        String sql = """
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+            FROM registros_actividad 
+            WHERE usuario_sistema = ? 
+            AND DATE(fecha_registro) = CURRENT_DATE
+            ORDER BY fecha_registro DESC
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(mapearRegistro(rs));
+                }
+            }
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener la actividad de hoy", e);
+        }
+
+        return registros;
+    }
+
+    @Override
+    public List<Registro> obtenerBloqueosHoy(String usuario) {
+        List<Registro> registros = new ArrayList<>();
+        String sql = """
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+            FROM registros_actividad 
+            WHERE usuario_sistema = ? AND detalle LIKE '%Blocked%'
+            AND DATE(fecha_registro) = CURRENT_DATE
+            ORDER BY fecha_registro DESC
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(mapearRegistro(rs));
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener bloqueos de hoy", e);
+        }
+        return registros;
+    }
+
+    @Override
+    public List<Registro> obtenerTopTrabajo(String usuario, int limite) {
+        List<Registro> registros = new ArrayList<>();
+        String sql = """
+            SELECT nombre_actividad, SUM(duracion_seg) as total_seg, categoria 
+            FROM registros_actividad 
+            WHERE usuario_sistema = ? AND categoria = 'TRABAJO'
+            AND DATE(fecha_registro) = CURRENT_DATE
+            GROUP BY nombre_actividad, categoria
+            ORDER BY total_seg DESC
+            LIMIT ?
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+            stmt.setInt(2, limite);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(Registro.builder()
+                            .nombreActividad(rs.getString("nombre_actividad"))
+                            .duracionSeg(rs.getLong("total_seg"))
+                            .categoria(rs.getString("categoria"))
+                            .build());
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener ranking de trabajo", e);
+        }
+        return registros;
+    }
+
+    @Override
+    public List<Registro> obtenerHistorialCompleto() {
+        List<Registro> historial = new ArrayList<>();
+        String sql = """
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+            FROM registros_actividad 
+            ORDER BY fecha_registro DESC
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql); ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                historial.add(mapearRegistro(rs));
+            }
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo crítico al obtener el historial completo de PostgreSQL", e);
+        }
+
+        return historial;
+    }
+
+    // ============================================
+    // UTILIDADES INTERNAS
+    // ============================================
     private Registro mapearRegistro(ResultSet rs) throws SQLException {
         Registro reg = new Registro();
         reg.setId(rs.getLong("id"));
@@ -136,12 +274,10 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         return reg;
     }
 
-    /**
-     * Trunca un string al máximo permitido, evitando PSQLException por overflow.
-     * Si el valor es null, retorna null.
-     */
     private String truncar(String valor, int maximo) {
-        if (valor == null) return null;
+        if (valor == null) {
+            return null;
+        }
         return valor.length() > maximo ? valor.substring(0, maximo) : valor;
     }
 }

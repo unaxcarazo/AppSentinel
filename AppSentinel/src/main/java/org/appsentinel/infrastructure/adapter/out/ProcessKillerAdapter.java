@@ -128,4 +128,5 @@ public class ProcessKillerAdapter implements KillerPort {
         if (nombre == null || nombre.isBlank()) return "";
         return nombre.toLowerCase().replace(".exe", "").trim();
     }
+    
 }

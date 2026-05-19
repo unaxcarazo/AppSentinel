@@ -90,7 +90,9 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
             JsonNode json = mapper.readTree(message);
             String url = json.has("url") ? json.get("url").asText() : null;
             String titulo = json.has("titulo") ? json.get("titulo").asText() : null;
-            int tabId = json.has("tabId") ? json.get("tabId").asInt() : -1;
+
+            // FIX: Normalizar tabId que puede venir como string con separadores de miles
+            int tabId = extraerTabId(json);
 
             if (url == null || url.isBlank() || url.length() > URL_MAX_LEN) return;
             if (!url.matches("https?://[\\w\\-\\.]+.*")) return;
@@ -109,6 +111,38 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "[WS] Error procesando mensaje JSON: {0}", e.getMessage());
         }
+    }
+
+    /**
+     * Extrae y normaliza el tabId del JSON.
+     * Maneja: entero nativo, string numérico, string con separadores de miles (español).
+     * Retorna -1 si no es parseable.
+     */
+    private int extraerTabId(JsonNode json) {
+        if (!json.has("tabId")) return -1;
+
+        JsonNode tabIdNode = json.get("tabId");
+
+        if (tabIdNode.isInt()) {
+            return tabIdNode.asInt();
+        }
+
+        if (tabIdNode.isTextual()) {
+            String raw = tabIdNode.asText().trim();
+            // Eliminar separadores de miles: "329.598.133" → "329598133"
+            // o "1,234,567" → "1234567"
+            String limpio = raw.replace(".", "").replace(",", "").replace(" ", "");
+            try {
+                return Integer.parseInt(limpio);
+            } catch (NumberFormatException e) {
+                LOGGER.log(Level.WARNING, "[WS] tabId no numérico después de limpieza: '{0}' (raw: '{1}')", 
+                    new Object[]{limpio, raw});
+                return -1;
+            }
+        }
+
+        LOGGER.log(Level.WARNING, "[WS] tabId de tipo inesperado: {0}", tabIdNode.getNodeType());
+        return -1;
     }
 
     @Override

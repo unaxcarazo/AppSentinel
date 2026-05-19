@@ -10,7 +10,7 @@ package org.appsentinel.domain.port.in;
  */
 public interface BrowserEventPort {
     
-    /**
+    /*
      * Reporta una URL detectada por la extensión del navegador.
      * @param url URL completa (ej: "https://www.youtube.com/watch?v=...")
      * @param titulo Título de la pestaña

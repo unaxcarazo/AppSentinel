@@ -47,6 +47,7 @@ public class TestAutoDescubrimiento {
     
     private static void cleanup(AppContext ctx) {
         ctx.tracking().finalizar();
+        AppWiring.detenerTodo();
         DatabaseConnection.cerrarPool();
         System.out.println("\n[FIN] Prueba finalizada limpiamente. Consola liberada.");
     }

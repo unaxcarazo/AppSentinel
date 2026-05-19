@@ -103,7 +103,7 @@ public class ProcessKillerAdapter implements KillerPort {
             LOGGER.log(Level.SEVERE, "[KILL] BrowserCommandPort no configurado");
             return;
         }
-        browserCommand.cerrarPestaña(tabId);
+        browserCommand.cerrarPestana(tabId);
     }
 
     private boolean esperarCierre(ProcessHandle ph, long segundos) {

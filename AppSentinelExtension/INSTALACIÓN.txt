@@ -1,0 +1,19 @@
+Pasos
+1. Abrir la página de extensiones de Chrome
+Abre Chrome y en la barra de direcciones escribe:
+chrome://extensions
+Pulsa Enter.
+
+2. Activar el modo desarrollador
+En la esquina superior derecha de la página, activa el interruptor Modo de desarrollador.
+
+3. Cargar la extensión
+Haz clic en el botón Cargar descomprimida que aparece en la parte superior izquierda.
+
+4. Seleccionar la carpeta de la extensión
+En el explorador de archivos que se abre, navega hasta la carpeta AppSentinelExtension y selecciónala. Haz clic en Seleccionar carpeta.
+
+4. Debería aparecer la extensión "AppSentinel Bridge"
+
+Resultado esperado
+Con la aplicación en marcha y la extensión instalada, cada vez que cambies de pestaña en Chrome, la URL activa se enviará automáticamente a AppSentinel para su clasificación y seguimiento.

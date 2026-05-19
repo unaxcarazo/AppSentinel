@@ -52,10 +52,10 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
     }
 
     @Override
-    public void cerrarPestaña(int tabId) {
-        String json = String.format("{\"accion\":\"cerrar_pestaña\",\"tabId\":%d}", tabId);
+    public void cerrarPestana(int tabId) {
+        String json = String.format("{\"accion\":\"cerrar_pestana\",\"tabId\":%d}", tabId);
         broadcast(json);
-        LOGGER.log(Level.INFO, "[WS] Comando cerrar pestaña broadcast: tabId={0}", tabId);
+        LOGGER.log(Level.INFO, "[WS] Comando cerrar pestana broadcast: tabId={0}", tabId);
     }
 
     @Override

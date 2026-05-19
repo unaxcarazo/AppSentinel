@@ -18,7 +18,7 @@ public class TestWeb {
         System.out.println("Precondición: Seed SQL ejecutado. youtube.com como DISTRACCION.");
         System.out.println("Precondición: Extensión Chrome conectada a ws://localhost:8080");
         
-        AppContext ctx = AppWiring.construir();
+        AppWiring.construir();
         
         System.out.println("\nWebSocket escuchando activamente en puerto 8080...");
         System.out.println(">>> ABRE CHROME + YOUTUBE AHORA (tienes 15 segundos) <<<");
@@ -33,11 +33,12 @@ public class TestWeb {
         System.out.println("Ejecuta en PostgreSQL para validar el guardado físico:");
         System.out.println("  SELECT id, nombre_actividad, categoria, detalle, duracion_seg FROM registros_actividad WHERE nombre_actividad LIKE '%youtube%';");
         
-        cleanup(ctx);
+        cleanup();
     }
     
-    private static void cleanup(AppContext ctx) {
-        ctx.tracking().finalizar();
+
+    private static void cleanup() {
+        AppWiring.detenerTodo();
         DatabaseConnection.cerrarPool();
         System.out.println("\n[FIN] Prueba web concluida. Puerto 8080 liberado con éxito.");
     }

@@ -4,6 +4,7 @@ import org.appsentinel.domain.model.Categoria;
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.in.BrowserEventPort;
 import org.appsentinel.domain.port.in.MonitorPort;
+
 import org.appsentinel.domain.port.out.KillerPort;
 import org.appsentinel.domain.port.out.NotificacionPort;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
@@ -18,6 +19,7 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
+import java.time.Instant;
 import org.appsentinel.domain.port.in.FocoActivoPort;
 
 /**
@@ -205,9 +207,17 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                 return;
             }
 
+            // FIX A.1: Capturar startInstant del proceso para validación anti-reciclaje
+            Instant startInstant = null;
+            if (pid > 0) {
+                startInstant = java.lang.ProcessHandle.of(pid)
+                    .flatMap(ph -> ph.info().startInstant())
+                    .orElse(null);
+            }
+
             activas.clear();
-            activas.put(clave, new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid));
-            LOGGER.log(Level.INFO, "[FOCO] {0}", nombre);
+            activas.put(clave, new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid, startInstant));
+            LOGGER.log(Level.INFO, "[FOCO] {0} (startInstant={1})", new Object[]{nombre, startInstant});
 
         } else {
             SeguimientoActividad seg = activas.get(clave);
@@ -458,7 +468,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     private void cerrar(String clave, SeguimientoActividad seg) {
         if (killer == null || !activas.containsKey(clave)) return;
         if (clave.startsWith("SYS|") && seg.pid > 0) {
-            killer.cerrarProceso(seg.nombre, seg.pid);
+            // FIX A.1: Pasar startInstant capturado en detección para validar anti-reciclaje
+            killer.cerrarProceso(seg.nombre, seg.pid, seg.startInstant);
         } else if (clave.startsWith("WEB|") && seg.tabId > 0) {
             killer.cerrarPestañaNavegador(seg.tabId);
         }
@@ -478,13 +489,15 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         String nombre, detalle, categoria;
         LocalDateTime inicio, ultimaVezVista;
         int tabId, pid;
+        Instant startInstant;  // FIX A.1: capturado al detectar, validado al matar
         EstadoDistraccion estado = EstadoDistraccion.INICIADA;
         long segundosAcumulados = 0;
 
         SeguimientoActividad(String nombre, String detalle, String categoria,
-                             LocalDateTime inicio, int tabId, int pid) {
+                             LocalDateTime inicio, int tabId, int pid, Instant startInstant) {
             this.nombre = nombre; this.detalle = detalle; this.categoria = categoria;
-            this.inicio = inicio; this.ultimaVezVista = inicio; this.tabId = tabId; this.pid = pid;
+            this.inicio = inicio; this.ultimaVezVista = inicio;
+            this.tabId = tabId; this.pid = pid; this.startInstant = startInstant;
         }
     }
 

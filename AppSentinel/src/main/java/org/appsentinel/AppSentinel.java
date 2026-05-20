@@ -5,9 +5,9 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
-import org.appsentinel.infrastructure.config.AppContext;
-import org.appsentinel.infrastructure.config.AppWiring;
-import org.appsentinel.infrastructure.gui.controller.MainController;
+import org.appsentinel.infrastructure.bootstrap.AppContext;
+import org.appsentinel.infrastructure.bootstrap.AppWiring;
+import org.appsentinel.infrastructure.adapter.in.gui.controller.MainController;
 
 /**
  * AppSentinel: Clase de aplicación JavaFX.

@@ -1,9 +1,8 @@
-package org.appsentinel.infrastructure.gui.controller;
-
 /*
  * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
  * Click nbfs://nbhost/SystemFileSystem/Templates/javafx/FXMLController.java to edit this template
  */
+package org.appsentinel.infrastructure.adapter.in.gui.controller;
 
 import java.net.URL;
 import java.util.ResourceBundle;
@@ -14,9 +13,9 @@ import javafx.fxml.Initializable;
  *
  * @author DAW1
  */
-public class DashboardController implements Initializable {
+public class UsageHistoryController implements Initializable {
 
-    /**
+    /*
      * Initializes the controller class.
      */
     @Override

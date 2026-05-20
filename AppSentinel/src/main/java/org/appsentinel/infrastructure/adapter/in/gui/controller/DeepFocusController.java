@@ -2,7 +2,7 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
  * Click nbfs://nbhost/SystemFileSystem/Templates/javafx/FXMLController.java to edit this template
  */
-package org.appsentinel.infrastructure.gui.controller;
+package org.appsentinel.infrastructure.adapter.in.gui.controller;
 
 import java.net.URL;
 import java.util.ResourceBundle;
@@ -13,7 +13,7 @@ import javafx.fxml.Initializable;
  *
  * @author DAW1
  */
-public class AppBlockerController implements Initializable {
+public class DeepFocusController implements Initializable {
 
     /**
      * Initializes the controller class.

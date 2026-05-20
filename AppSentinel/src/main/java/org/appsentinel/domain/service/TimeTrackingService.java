@@ -4,6 +4,7 @@ import org.appsentinel.domain.model.Categoria;
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.in.BrowserEventPort;
 import org.appsentinel.domain.port.in.MonitorPort;
+import org.appsentinel.domain.port.out.FocoActivoPort;
 import org.appsentinel.domain.port.out.KillerPort;
 import org.appsentinel.domain.port.out.NotificacionPort;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
@@ -29,12 +30,28 @@ import java.util.regex.Pattern;
  * 4. Si el usuario está AUSENTE (sin reportes en SEGUNDOS_AUSENCIA_USUARIO), los relojes se congelan.
  * 5. El bloqueo se dispara solo cuando una DISTRACCION supera segundosBloqueo con foco activo.
  *
+ * OPTIMIZACIÓN DE PERSISTENCIA (Anti-saturación):
+ * El escáner sigue ejecutándose cada 10 segundos (requisito funcional), pero la
+ * persistencia en PostgreSQL ya NO ocurre en cada ciclo. En su lugar:
+ *
+ *   - Foco activo: acumula segundos en memoria (segundosAcumulados). Solo se
+ *     persiste cuando la app pierde el foco (cambio de ventana/pestaña) o al
+ *     cerrar la sesión (purgarSesionesMuertas / finalizar).
+ *   - Segundo plano: se persiste cada ciclo de mantenimiento (10s) como antes,
+ *     pero solo para apps que NO tienen foco. Esto es inevitable: necesitamos
+ *     saber que la app sigue viva en segundo plano.
+ *
+ * RESULTADO:
+ *   - VS Code 2h sin interrupciones: 1 INSERT (antes 720).
+ *   - Chrome con 10 tabs: 1 INSERT por tab activa (antes 360 por tab).
+ *   - Segundo plano: mantiene chunks de 10s (correcto, son apps distintas).
+ *
  * INVARIANTE DE PERSISTENCIA:
- * - Una app enfocada → persiste SOLO via persistirChunkFoco (nunca via persistirChunkExistencia).
- * - Una app en segundo plano → persiste SOLO via persistirChunkExistencia.
+ * - Una app enfocada → persiste SOLO al perder foco o cerrar sesión.
+ * - Una app en segundo plano → persiste cada 10s via persistirChunkExistencia.
  * - Esta regla se aplica uniformemente en el ciclo normal, en la purga y en el cierre.
  */
-public class TimeTrackingService implements MonitorPort, BrowserEventPort {
+public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoActivoPort {
 
     private static final Logger LOGGER = Logger.getLogger(TimeTrackingService.class.getName());
 
@@ -48,7 +65,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     private final boolean modoEstricto;
     private final String usuario;
 
-    // Reloj de existencia: todas las apps que el escáner ha detectado, con o sin foco.
+    // Reloj de existencia: todas las apps detectadas, con o sin foco.
     private final ConcurrentHashMap<String, SesionExistencia> sesiones = new ConcurrentHashMap<>();
 
     // Reloj de foco: máximo una entrada. La clave es idéntica a la de 'sesiones'.
@@ -66,8 +83,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     private static final int SEGUNDOS_AUSENCIA_USUARIO = 300;
     private static final int SEGUNDOS_SIN_RASTRO       = 120;
 
-    // FIX 1: `\.` era una secuencia de escape inválida en Java. El punto literal
-    // en regex debe escaparse doble: `\\.` (primero el String, luego el regex).
     private static final Pattern PROTOCOLO_WWW = Pattern.compile("https?://(www\\.)?");
     private static final Pattern PATH_QUERY    = Pattern.compile("/.*");
 
@@ -85,7 +100,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
                                KillerPort killer,
                                int segundosAviso,
                                int segundosBloqueo,
-                               int segundosPausa,   // Reservado, no usado actualmente
+                               int segundosPausa,
                                boolean modoEstricto,
                                String usuario) {
         this.detector        = detector;
@@ -101,6 +116,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
 
         System.out.println("TimeTrackingService iniciado — usuario: " + usuario);
         System.out.println("   Modo: " + (modoEstricto ? "ESTRICTO" : "NORMAL"));
+        System.out.println("   Persistencia optimizada: foco acumula en memoria, flush al perder foco.");
     }
 
     // -------------------------------------------------------------------------
@@ -128,29 +144,43 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     }
 
     // -------------------------------------------------------------------------
+    // FocoActivoPort — consulta del estado actual de foco
+    // -------------------------------------------------------------------------
+
+    @Override
+    public int getPidFocoActivo() {
+        return activas.values().stream()
+            .findFirst()
+            .map(seg -> seg.pid)
+            .orElse(-1);
+    }
+
+    @Override
+    public String getNombreFocoActivo() {
+        return activas.values().stream()
+            .findFirst()
+            .map(seg -> seg.nombre)
+            .orElse(null);
+    }
+
+    @Override
+    public boolean esFocoWeb() {
+        return activas.keySet().stream()
+            .findFirst()
+            .map(clave -> clave.startsWith("WEB|"))
+            .orElse(false);
+    }
+
+    // -------------------------------------------------------------------------
     // Utilidades de dominio: jerarquía de foco
     // -------------------------------------------------------------------------
 
-    /**
-     * Determina si un nombre de proceso corresponde a un navegador web conocido.
-     * Usa coincidencia exacta (sin .exe, en minúsculas) para evitar falsos positivos.
-     */
     private boolean esProcesoNavegador(String nombreProceso) {
         if (nombreProceso == null) return false;
         String n = nombreProceso.toLowerCase().replace(".exe", "");
         return NAVEGADORES.contains(n);
     }
 
-    /**
-     * Retorna la clave de la entrada web activa reciente, o null si no existe.
-     *
-     * FIX 2: 'activas' tiene MÁXIMO UNA entrada por invariante de diseño, por lo que
-     * iterar con entrySet() era innecesariamente confuso. Se usa findFirst() para
-     * reflejar con precisión el contrato del mapa y evitar recorridos inútiles.
-     *
-     * Usa la CLAVE del mapa ("WEB|") como fuente de verdad en lugar del nombre,
-     * lo que evita falsos negativos si el título de la pestaña está vacío o cambia.
-     */
     private String claveWebActivaReciente(LocalDateTime ahora) {
         Map.Entry<String, SeguimientoActividad> entry = activas.entrySet()
             .stream().findFirst().orElse(null);
@@ -181,7 +211,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
                 sesion.ultimaVezVista = ahora;
                 sesion.categoria = categoria;
 
-                // Notificar "sin clasificar" solo una vez por sesión de existencia
                 if (Categoria.SIN_CLASIFICAR.equals(categoria) && !sesion.notificadaSinClasificar) {
                     notificacion.notificarAppSinClasificar(nombre, detalle);
                     sesion.notificadaSinClasificar = true;
@@ -193,15 +222,12 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
             boolean esNavegadorSO = clave.startsWith("SYS|") && esProcesoNavegador(nombre);
 
             if (!esMismaApp) {
+                // ANTES de cambiar el foco: flush del acumulado del foco anterior
+                flushFocoActivo(ahora);
+
                 String claveWebActiva = esNavegadorSO ? claveWebActivaReciente(ahora) : null;
 
                 if (claveWebActiva != null) {
-                    // El SO confirma que el navegador sigue en primer plano.
-                    // Refrescamos TANTO el reloj de foco (SeguimientoActividad)
-                    // COMO la sesión de existencia (SesionExistencia) de la entrada web,
-                    // para evitar que purgarSesionesMuertas la elimine por inactividad
-                    // cuando la extensión deja de emitir eventos (pestaña estática,
-                    // corte de WebSocket, etc.).
                     SeguimientoActividad segWeb = activas.get(claveWebActiva);
                     if (segWeb != null) {
                         segWeb.ultimaVezVista = ahora;
@@ -213,10 +239,10 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
                     }
 
                     System.out.println("[FOCO] Navegador (" + nombre + ") en primer plano. Web mantiene foco.");
-                    return; // No modificamos activas
+                    return;
                 }
 
-                // Cualquier otra app toma el foco legítimamente
+                // Nueva app toma el foco
                 activas.clear();
                 activas.put(clave, new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid));
                 System.out.println("[FOCO] " + nombre);
@@ -230,6 +256,42 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
                 }
             }
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Flush del foco activo (persistencia optimizada)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Persiste el tiempo acumulado del foco activo actual y lo resetea.
+     * Se invoca cuando la app pierde el foco (cambio de ventana/pestaña)
+     * o al cerrar la sesión (purgar / finalizar).
+     *
+     * ANTI-SATURACIÓN: en lugar de 1 INSERT cada 10s, acumula en memoria
+     * y hace 1 INSERT al perder el foco. Para VS Code 2h: 1 registro
+     * en lugar de 720.
+     */
+    private void flushFocoActivo(LocalDateTime ahora) {
+        if (activas.isEmpty()) return;
+
+        Map.Entry<String, SeguimientoActividad> entry = activas.entrySet()
+            .stream().findFirst().orElse(null);
+        if (entry == null) return;
+
+        String clave = entry.getKey();
+        SeguimientoActividad seg = entry.getValue();
+
+        long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
+        long totalAFlush = seg.segundosAcumulados + segsFoco;
+
+        if (totalAFlush > 0) {
+            persistirChunkFoco(clave, seg, totalAFlush, ahora);
+            System.out.println("[FLUSH] " + seg.nombre + " → " + fmt(totalAFlush) + " persistidos (foco perdido)");
+        }
+
+        // Resetear acumuladores (la sesión de existencia sigue viva)
+        seg.segundosAcumulados = 0;
+        seg.inicio = ahora;
     }
 
     // -------------------------------------------------------------------------
@@ -255,34 +317,32 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     private void avanzarRelojesYVerificar() {
         LocalDateTime ahora = LocalDateTime.now();
 
-        // --- Avanzar relojes de existencia (solo apps en segundo plano) ---
-        // Las apps con foco delegan su persistencia al bloque de activas (invariante de persistencia).
+        // --- Segundo plano: persiste cada 10s (correcto, son apps distintas) ---
         for (SesionExistencia sesion : sesiones.values()) {
             long segsDesdeInicio = Duration.between(sesion.inicio, ahora).getSeconds();
             if (segsDesdeInicio > 5) {
                 if (!activas.containsKey(sesion.clave)) {
                     persistirChunkExistencia(sesion, segsDesdeInicio, ahora);
                 }
-                // El inicio se resetea siempre: evita doble conteo si la app gana foco
-                // antes del siguiente ciclo, ya que el foco se cuenta desde seg.inicio.
                 sesion.inicio = ahora;
             }
         }
 
-        // --- Avanzar reloj de foco y evaluar bloqueo (solo la app activa) ---
+        // --- Foco activo: acumula en memoria, NO persiste ---
         activas.forEach((clave, seg) -> {
             long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
 
             if (segsFoco > 5) {
-                persistirChunkFoco(clave, seg, segsFoco, ahora);
+                // Acumular en memoria en lugar de persistir inmediatamente
+                seg.segundosAcumulados += segsFoco;
                 seg.inicio = ahora;
             }
 
-            // Bloqueo solo si es distracción con foco activo
+            // Lógica de bloqueo sigue funcionando con el tiempo total (acumulado + actual)
             if (Categoria.DISTRACCION.equals(seg.categoria)) {
                 long focoHistorico  = obtenerFocoAcumulado(clave);
                 long segsFocoActual = Duration.between(seg.inicio, ahora).getSeconds();
-                long totalFoco      = focoHistorico + segsFocoActual;
+                long totalFoco      = focoHistorico + seg.segundosAcumulados + segsFocoActual;
 
                 if (modoEstricto) {
                     aplicarModoEstricto(clave, seg, totalFoco);
@@ -297,10 +357,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // Persistencia
     // -------------------------------------------------------------------------
 
-    /**
-     * Persiste un chunk de SEGUNDO PLANO. Solo debe llamarse cuando la app NO tiene foco.
-     * La categoría se prefija con "BACKGROUND_" para distinguirla del tiempo de foco.
-     */
     private void persistirChunkExistencia(SesionExistencia sesion, long segs, LocalDateTime ahora) {
         Registro reg = new Registro();
         reg.setUsuarioSistema(usuario);
@@ -312,10 +368,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         repository.guardar(reg);
     }
 
-    /**
-     * Persiste un chunk de FOCO ACTIVO y acumula los segundos en la sesión de existencia.
-     * Es la única función que debe registrar tiempo de la app enfocada.
-     */
     private void persistirChunkFoco(String clave, SeguimientoActividad seg,
                                     long segs, LocalDateTime ahora) {
         Registro reg = new Registro();
@@ -405,12 +457,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // Purga de sesiones muertas
     // -------------------------------------------------------------------------
 
-    /**
-     * Elimina sesiones de apps que han desaparecido del sistema.
-     * Antes de eliminar, persiste el chunk pendiente respetando el invariante:
-     * - App enfocada → persistirChunkFoco.
-     * - App en segundo plano → persistirChunkExistencia.
-     */
     private void purgarSesionesMuertas() {
         List<String> clavesAEliminar = new ArrayList<>();
         LocalDateTime ahora = LocalDateTime.now();
@@ -425,14 +471,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
             SeguimientoActividad seg = activas.get(clave);
 
             if (seg != null) {
-                // App enfocada al purgar: persiste chunk de foco (invariante de persistencia).
-                // No llamar a persistirChunkExistencia para evitar doble conteo.
+                // App enfocada al purgar: flush acumulado antes de eliminar
                 long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
-                if (segsFoco > 0) {
-                    persistirChunkFoco(clave, seg, segsFoco, ahora);
+                long totalAFlush = seg.segundosAcumulados + segsFoco;
+                if (totalAFlush > 0) {
+                    persistirChunkFoco(clave, seg, totalAFlush, ahora);
                 }
             } else {
-                // App en segundo plano: persiste chunk de existencia normalmente.
+                // App en segundo plano: persiste chunk normalmente
                 long segsDesdeInicio = Duration.between(sesion.inicio, ahora).getSeconds();
                 if (segsDesdeInicio > 0) {
                     persistirChunkExistencia(sesion, segsDesdeInicio, ahora);
@@ -451,11 +497,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // Ciclo de vida del servicio
     // -------------------------------------------------------------------------
 
-    /**
-     * Cierra el servicio y persiste los chunks pendientes respetando el invariante:
-     * - Apps enfocadas → persistirChunkFoco (primero).
-     * - Apps en segundo plano → persistirChunkExistencia (excluye las ya persistidas).
-     */
     public void finalizar() {
         scheduler.shutdown();
         try {
@@ -470,15 +511,17 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         synchronized (lockLimpieza) {
             LocalDateTime ahora = LocalDateTime.now();
 
-            // 1. Flush de apps enfocadas (foco activo)
+            // Flush de apps enfocadas (acumulados en memoria)
             for (Map.Entry<String, SeguimientoActividad> entry : activas.entrySet()) {
-                long segs = Duration.between(entry.getValue().inicio, ahora).getSeconds();
-                if (segs > 0) {
-                    persistirChunkFoco(entry.getKey(), entry.getValue(), segs, ahora);
+                SeguimientoActividad seg = entry.getValue();
+                long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
+                long totalAFlush = seg.segundosAcumulados + segsFoco;
+                if (totalAFlush > 0) {
+                    persistirChunkFoco(entry.getKey(), seg, totalAFlush, ahora);
                 }
             }
 
-            // 2. Flush de apps en segundo plano (excluye las que tenían foco, ya persistidas)
+            // Flush de apps en segundo plano
             for (SesionExistencia sesion : sesiones.values()) {
                 if (!activas.containsKey(sesion.clave)) {
                     long segs = Duration.between(sesion.inicio, ahora).getSeconds();
@@ -489,7 +532,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
             }
         }
 
-        System.out.println("[FIN] Seguimiento finalizado");
+        System.out.println("[FIN] Seguimiento finalizado — flush completo realizado.");
     }
 
     public void setKiller(KillerPort killer) {
@@ -525,6 +568,10 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         int tabId;
         int pid;
         EstadoDistraccion estado = EstadoDistraccion.INICIADA;
+
+        // NUEVO: acumulador en memoria para anti-saturación
+        // El tiempo de foco se acumula aquí y solo se persiste al perder el foco
+        long segundosAcumulados = 0;
 
         SeguimientoActividad(String nombre, String detalle, String categoria,
                              LocalDateTime inicio, int tabId, int pid) {

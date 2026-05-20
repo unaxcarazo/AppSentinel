@@ -1,23 +1,36 @@
-package org.appsentinel.infrastructure.config;
+package org.appsentinel.infrastructure.bootstrap;
 
 import org.appsentinel.domain.service.DistractionDetector;
 import org.appsentinel.domain.service.TimeTrackingService;
 import org.appsentinel.infrastructure.adapter.in.ProcessWindowMonitorAdapter;
 import org.appsentinel.infrastructure.adapter.in.WebSocketAdapter;
 import org.appsentinel.infrastructure.adapter.out.JavaFXAlertAdapter;
+import org.appsentinel.infrastructure.adapter.out.OshiRendimientoAdapter;
 import org.appsentinel.infrastructure.adapter.out.PostgreSQLCategoriaAdapter;
 import org.appsentinel.infrastructure.adapter.out.PostgreSQLRepositoryAdapter;
 import org.appsentinel.infrastructure.adapter.out.ProcessKillerAdapter;
+import org.appsentinel.infrastructure.config.AppConfig;
 
 /**
  * AppWiring: Ensamblador del sistema (Dependency Injection manual).
+ *
+ * Instancia todos los adaptadores, los conecta con el dominio a través
+ * de los puertos correspondientes y devuelve un AppContext inmutable.
+ *
+ * NOTA SOBRE FocoActivoPort:
+ * TimeTrackingService implementa FocoActivoPort. En el wiring se pasa
+ * la misma instancia (tracking) dos veces en AppContext:
+ *   - como tracking: servicio completo (MonitorPort, BrowserEventPort)
+ *   - como focoActivo: puerto de consulta (FocoActivoPort)
+ * Esto es polimorfismo por interfaces: la UI consume FocoActivoPort
+ * sin saber que detrás está TimeTrackingService.
  */
 public class AppWiring {
 
-    // Referencias estáticas para coordinar el apagado limpio del sistema operativo
-    private static WebSocketAdapter webSocketInstance;
-    private static ProcessWindowMonitorAdapter monitorInstance;
-    private static TimeTrackingService trackingInstance;
+    // Referencias estáticas para coordinar el apagado limpio
+    private static WebSocketAdapter             webSocketInstance;
+    private static ProcessWindowMonitorAdapter  monitorInstance;
+    private static TimeTrackingService          trackingInstance;
 
     public static AppContext construir() {
 
@@ -25,6 +38,7 @@ public class AppWiring {
         PostgreSQLCategoriaAdapter  categorias   = new PostgreSQLCategoriaAdapter();
         PostgreSQLRepositoryAdapter repo         = new PostgreSQLRepositoryAdapter();
         JavaFXAlertAdapter          notificacion = new JavaFXAlertAdapter();
+        OshiRendimientoAdapter      rendimiento  = new OshiRendimientoAdapter();
 
         // ========== DOMINIO ==========
         DistractionDetector detector = new DistractionDetector(categorias);
@@ -33,7 +47,7 @@ public class AppWiring {
             detector,
             repo,
             notificacion,
-            null,
+            null,  // killer se inyecta después de construir WebSocketAdapter
             AppConfig.getSegundosAvisoPreventivo(),
             AppConfig.getSegundosBloqueoSesion(),
             AppConfig.getSegundosPausaReenfoque(),
@@ -56,29 +70,42 @@ public class AppWiring {
         monitorInstance = monitor;
 
         // ========== CONTEXTO: SOLO PUERTOS, NO ADAPTADORES CONCRETOS ==========
-        return new AppContext(tracking, repo, categorias, notificacion, killer);
+        // tracking se pasa dos veces: como servicio y como FocoActivoPort
+        return new AppContext(
+            tracking,      // TimeTrackingService (MonitorPort, BrowserEventPort)
+            repo,
+            categorias,
+            notificacion,
+            killer,
+            rendimiento,
+            tracking       // FocoActivoPort (misma instancia, rol distinto)
+        );
     }
 
     /**
-     * NUEVO MÉTODO: Asegura el cierre de todos los hilos del sistema al cerrar JavaFX.
-     * Debe ser invocado en el evento de salida de la aplicación principal.
+     * Detiene todos los hilos de infraestructura en el orden correcto:
+     * 1. Monitor de procesos — deja de escanear el OS.
+     * 2. WebSocket — cierra el puerto 8080 y el rate-limiter.
+     * 3. Tracking — persiste los chunks pendientes y para el scheduler.
+     *
+     * OshiRendimientoAdapter no necesita parada explícita: no tiene hilos
+     * propios, solo lee el hardware bajo demanda desde el hilo de la UI.
      */
     public static void detenerTodo() {
         System.out.println("[SHUTDOWN] Iniciando apagado limpio de hilos de infraestructura...");
-        
+
         if (monitorInstance != null) {
-            // Asumiendo que el monitor tiene un método para detener su bucle nativo
-             monitorInstance.detener(); 
+            monitorInstance.detener();
         }
-        
+
         if (webSocketInstance != null) {
-            webSocketInstance.detener(); // Detiene el servidor de sockets y su rate-limiter
+            webSocketInstance.detener();
         }
-        
+
         if (trackingInstance != null) {
-            trackingInstance.finalizar(); // Cancela el Scheduler subyacente del dominio
+            trackingInstance.finalizar();
         }
-        
+
         System.out.println("[SHUTDOWN] Sistema apagado correctamente.");
     }
 }

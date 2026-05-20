@@ -15,4 +15,5 @@ public final class Categoria {
     public static final String NEUTRAL = "NEUTRAL";
     public static final String DISTRACCION = "DISTRACCION";
     public static final String SIN_CLASIFICAR = "SIN_CLASIFICAR";
+    public static final String BACKGROUND     = "BACKGROUND_";
 }

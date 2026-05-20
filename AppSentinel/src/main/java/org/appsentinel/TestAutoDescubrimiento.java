@@ -1,8 +1,8 @@
 package org.appsentinel;
 
 import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
-import org.appsentinel.infrastructure.config.AppContext;
-import org.appsentinel.infrastructure.config.AppWiring;
+import org.appsentinel.infrastructure.bootstrap.AppContext;
+import org.appsentinel.infrastructure.bootstrap.AppWiring;
 
 /**
  * PruebaAutoDescubrimiento: Prueba integral del flujo de auto-descubrimiento.

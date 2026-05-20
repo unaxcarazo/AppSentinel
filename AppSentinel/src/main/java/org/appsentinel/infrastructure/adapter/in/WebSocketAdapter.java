@@ -45,7 +45,7 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
     });
 
     public WebSocketAdapter(BrowserEventPort browserEventPort) {
-        super(new InetSocketAddress(8080));
+        super(new InetSocketAddress("127.0.0.1", 8080));
         this.browserEventPort = browserEventPort;
         rateLimitReset.scheduleAtFixedRate(() -> mensajesPorSegundo.clear(), 1, 1, TimeUnit.SECONDS);
         this.setConnectionLostTimeout(10);

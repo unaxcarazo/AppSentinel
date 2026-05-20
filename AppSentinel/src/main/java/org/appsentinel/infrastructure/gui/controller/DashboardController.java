@@ -3,7 +3,9 @@ package org.appsentinel.infrastructure.gui.controller;
 import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
+import java.net.URL;
 import java.util.List;
+import java.util.ResourceBundle;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
 import javafx.scene.chart.BarChart;
@@ -18,13 +20,15 @@ import javafx.scene.layout.VBox;
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 import org.appsentinel.infrastructure.config.AppContext;
+import javafx.fxml.Initializable;
+import javafx.scene.control.ScrollPane;
 
 /**
  * DashboardController: Gestiona el panel principal de métricas de
  * productividad. Integrado polimórficamente mediante la interfaz Controllable
  * del ecosistema del grupo.
  */
-public class DashboardController implements Controllable {
+public class DashboardController implements Initializable, Controllable {
 
     private static final double LIMITE_TRABAJO_SEG = 5 * 3600; // 5 horas en segundos
     private static final double LIMITE_DISTRACCION_SEG = 1 * 3600; // 1 hora en segundos
@@ -55,6 +59,27 @@ public class DashboardController implements Controllable {
     private Label lblScorePercent;
     @FXML
     private BarChart<String, Number> barChartActivity;
+
+    @FXML
+    private ScrollPane rootPane; // Asegúrate de que este ID coincida con el fx:id de tu FXML raíz
+
+    @Override
+    public void initialize(URL url, ResourceBundle rb) {
+        if (rootPane != null) {
+            // 1. Intentamos buscar el archivo en el Classpath
+            URL cssURL = this.getClass().getResource("/styles/dashboard.css"); // <-- Asegúrate de que se llame así tu archivo real
+
+            if (cssURL == null) {
+                System.err.println("❌ ERROR CRÍTICO: ¡El archivo CSS no se encuentra en 'src/main/resources/styles/'!");
+                System.err.println("Comprueba que el nombre sea idéntico (ej: 'dashboard.css' o 'styles.css')");
+            } else {
+                System.out.println("✅ Archivo CSS encontrado con éxito en: " + cssURL.toExternalForm());
+                rootPane.getStylesheets().add(cssURL.toExternalForm());
+            }
+        } else {
+            System.err.println("❌ ERROR: 'rootPane' es null. El fx:id no está bien puesto en el FXML.");
+        }
+    }
 
     /**
      * Constructor vacío nativo requerido por el FXMLLoader de JavaFX.
@@ -236,12 +261,13 @@ public class DashboardController implements Controllable {
 
     private void actualizarLogActividad(List<Registro> registros) {
         vboxActivityLog.getChildren().clear();
-        if (registros == null) {
+        if (registros == null || registros.isEmpty()) {
             return;
         }
 
         for (Registro r : registros) {
-            if (r.getFechaRegistro() == null || r.getNombreActividad() == null) {
+            // Blindaje extra: asegurar que el objeto y sus campos críticos existan
+            if (r == null || r.getFechaRegistro() == null || r.getNombreActividad() == null) {
                 continue;
             }
 
@@ -250,8 +276,9 @@ public class DashboardController implements Controllable {
             row.setAlignment(Pos.CENTER_LEFT);
             row.setSpacing(15);
 
-            String emoji = "TRABAJO".equalsIgnoreCase(r.getCategoria()) ? "💻" : "🌐";
-            String estiloIcono = "TRABAJO".equalsIgnoreCase(r.getCategoria()) ? "icon-box-cian" : "icon-box-naranja";
+            String categoria = r.getCategoria() != null ? r.getCategoria() : "NEUTRAL";
+            String emoji = "TRABAJO".equalsIgnoreCase(categoria) ? "💻" : "🌐";
+            String estiloIcono = "TRABAJO".equalsIgnoreCase(categoria) ? "icon-box-cian" : "icon-box-naranja";
 
             StackPane iconBox = new StackPane(new Label(emoji));
             iconBox.getStyleClass().addAll("icon-box", estiloIcono);
@@ -260,10 +287,15 @@ public class DashboardController implements Controllable {
             Label appName = new Label(r.getNombreActividad());
             appName.getStyleClass().add("log-app-title");
 
-            String horaFormateada = r.getFechaRegistro().toLocalTime().toString();
-            if (horaFormateada.length() >= 5) {
-                horaFormateada = horaFormateada.substring(0, 5);
+            // Formateo ultra seguro de la hora
+            String horaFormateada = "00:00";
+            if (r.getFechaRegistro().toLocalTime() != null) {
+                String rawTime = r.getFechaRegistro().toLocalTime().toString();
+                if (rawTime != null && rawTime.length() >= 5) {
+                    horaFormateada = rawTime.substring(0, 5);
+                }
             }
+
             Label detail = new Label("Started: " + horaFormateada);
             detail.getStyleClass().add("log-subtext");
             textData.getChildren().addAll(appName, detail);
@@ -281,12 +313,12 @@ public class DashboardController implements Controllable {
 
     private void actualizarLogBloqueos(List<Registro> bloqueos) {
         vboxBlockingLog.getChildren().clear();
-        if (bloqueos == null) {
+        if (bloqueos == null || bloqueos.isEmpty()) {
             return;
         }
 
         for (Registro b : bloqueos) {
-            if (b.getFechaRegistro() == null || b.getNombreActividad() == null) {
+            if (b == null || b.getFechaRegistro() == null || b.getNombreActividad() == null) {
                 continue;
             }
 
@@ -302,7 +334,16 @@ public class DashboardController implements Controllable {
             Label appName = new Label(b.getNombreActividad());
             appName.getStyleClass().add("log-app-title");
 
-            Label detail = new Label("Blocked attempt at " + b.getFechaRegistro().toLocalTime().toString().substring(0, 5));
+            // Formateo ultra seguro previniendo síncopes en substring
+            String horaBloqueo = "00:00";
+            if (b.getFechaRegistro().toLocalTime() != null) {
+                String rawTime = b.getFechaRegistro().toLocalTime().toString();
+                if (rawTime != null && rawTime.length() >= 5) {
+                    horaBloqueo = rawTime.substring(0, 5);
+                }
+            }
+
+            Label detail = new Label("Blocked attempt at " + horaBloqueo);
             detail.getStyleClass().add("log-subtext");
             textData.getChildren().addAll(appName, detail);
 
@@ -378,11 +419,16 @@ public class DashboardController implements Controllable {
         java.util.Map<String, Double> acumuladoDistraccion = new java.util.LinkedHashMap<>();
 
         for (Registro r : registros) {
-            if (r.getFechaRegistro() == null || r.getCategoria() == null) {
+            if (r == null || r.getFechaRegistro() == null || r.getCategoria() == null || r.getFechaRegistro().toLocalTime() == null) {
                 continue;
             }
 
-            String hora = r.getFechaRegistro().toLocalTime().toString().substring(0, 2) + ":00";
+            String rawTime = r.getFechaRegistro().toLocalTime().toString();
+            if (rawTime == null || rawTime.length() < 2) {
+                continue;
+            }
+
+            String hora = rawTime.substring(0, 2) + ":00";
             double minutos = r.getDuracionSeg() / 60.0;
 
             if ("TRABAJO".equalsIgnoreCase(r.getCategoria())) {
@@ -410,4 +456,3 @@ public class DashboardController implements Controllable {
         scoreFill.setPrefHeight(maxHeight * sanitizedScore);
     }
 }
-

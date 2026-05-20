@@ -34,34 +34,61 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             return;
         }
 
-        String sql = """
+        // Evaluar si el registro ya existe en la base de datos basándonos en su ID
+        if (registro.getId() != null) {
+            // 🌟 LÓGICA DE UPDATE: Actualiza el bloque de tiempo continuo existente
+            String sqlUpdate = """
+            UPDATE registros_actividad 
+            SET duracion_seg = ?, fecha_registro = ? 
+            WHERE id = ?
+            """;
+
+            try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sqlUpdate)) {
+
+                stmt.setLong(1, registro.getDuracionSeg());
+                stmt.setTimestamp(2, Timestamp.valueOf(registro.getFechaRegistro()));
+                stmt.setLong(3, registro.getId());
+
+                stmt.executeUpdate();
+
+                LOGGER.log(Level.INFO, "[PERSISTENCIA] Registro ACTUALIZADO en PostgreSQL: {0} (Nuevo total: {1}s)",
+                        new Object[]{truncar(registro.getNombreActividad(), 50), registro.getDuracionSeg()});
+
+            } catch (SQLException e) {
+                LOGGER.log(Level.SEVERE, "[ERROR] Fallo crítico al actualizar registro de actividad en la base de datos", e);
+            }
+
+        } else {
+            // 🌟 LÓGICA DE INSERT original: Crea una fila nueva si cambió de aplicación
+            String sqlInsert = """
             INSERT INTO registros_actividad 
             (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
             VALUES (?, ?, ?, ?, ?, ?)
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sqlInsert, Statement.RETURN_GENERATED_KEYS)) {
 
-            stmt.setString(1, truncar(registro.getUsuarioSistema(), LIMITE_USUARIO));
-            stmt.setString(2, truncar(registro.getNombreActividad(), LIMITE_NOMBRE_ACTIVIDAD));
-            stmt.setString(3, truncar(registro.getCategoria(), LIMITE_CATEGORIA));
-            stmt.setString(4, truncar(registro.getDetalle(), LIMITE_DETALLE));
-            stmt.setLong(5, registro.getDuracionSeg());
-            stmt.setTimestamp(6, Timestamp.valueOf(registro.getFechaRegistro()));
+                stmt.setString(1, truncar(registro.getUsuarioSistema(), LIMITE_USUARIO));
+                stmt.setString(2, truncar(registro.getNombreActividad(), LIMITE_NOMBRE_ACTIVIDAD));
+                stmt.setString(3, truncar(registro.getCategoria(), LIMITE_CATEGORIA));
+                stmt.setString(4, truncar(registro.getDetalle(), LIMITE_DETALLE));
+                stmt.setLong(5, registro.getDuracionSeg());
+                stmt.setTimestamp(6, Timestamp.valueOf(registro.getFechaRegistro()));
 
-            stmt.executeUpdate();
+                stmt.executeUpdate();
 
-            try (ResultSet rs = stmt.getGeneratedKeys()) {
-                if (rs.next()) {
-                    registro.setId(rs.getLong(1));
+                try (ResultSet rs = stmt.getGeneratedKeys()) {
+                    if (rs.next()) {
+                        registro.setId(rs.getLong(1));
+                    }
                 }
+
+                LOGGER.log(Level.INFO, "[PERSISTENCIA] Registro NUEVO guardado en PostgreSQL: {0} ({1}s)",
+                        new Object[]{truncar(registro.getNombreActividad(), 50), registro.getDuracionSeg()});
+
+            } catch (SQLException e) {
+                LOGGER.log(Level.SEVERE, "[ERROR] Fallo crítico al insertar registro de actividad en la base de datos", e);
             }
-
-            LOGGER.log(Level.INFO, "[PERSISTENCIA] Registro guardado en PostgreSQL: {0} ({1}s)",
-                    new Object[]{truncar(registro.getNombreActividad(), 50), registro.getDuracionSeg()});
-
-        } catch (SQLException e) {
-            LOGGER.log(Level.SEVERE, "[ERROR] Fallo crítico al insertar registro de actividad en la base de datos", e);
         }
     }
 
@@ -128,11 +155,11 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             FROM registros_actividad 
             WHERE usuario_sistema = ? AND categoria = 'DISTRACCION'
             AND DATE(fecha_registro) = CURRENT_DATE
-            GROUP BY nombre_actividad, category = categoria -- Nota: Ajustado sintaxis GROUP BY estándar
             GROUP BY nombre_actividad, categoria
             ORDER BY total_seg DESC
             LIMIT ?
             """;
+        //GROUP BY nombre_actividad, category = categoria -- Nota: Ajustado sintaxis GROUP BY estándar
 
         try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
 
@@ -257,6 +284,75 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         }
 
         return historial;
+    }
+
+    @Override
+    public Registro obtenerUltimoRegistroPorUsuario(String usuario) {
+        String sql = """
+        SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+        FROM registros_actividad 
+        WHERE usuario_sistema = ? 
+        ORDER BY fecha_registro DESC 
+        LIMIT 1
+        """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); 
+                PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    Registro reg = new Registro();
+                    reg.setId(rs.getLong("id")); // ¡Vital para que el if de guardar() lo detecte!
+                    reg.setUsuarioSistema(rs.getString("usuario_sistema"));
+                    reg.setNombreActividad(rs.getString("nombre_actividad"));
+                    reg.setCategoria(rs.getString("categoria"));
+                    reg.setDetalle(rs.getString("detalle"));
+                    reg.setDuracionSeg(rs.getLong("duracion_seg"));
+                    reg.setFechaRegistro(rs.getTimestamp("fecha_registro").toLocalDateTime());
+                    return reg;
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] No se pudo recuperar el último registro de actividad del usuario " + usuario, e);
+        }
+        return null;
+    }
+
+    @Override
+    public List<Registro> buscarTodos() {
+        List<Registro> lista = new ArrayList<>();
+        String sql = """
+        SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+        FROM registros_actividad 
+        ORDER BY fecha_registro DESC
+        """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); 
+             PreparedStatement stmt = conn.prepareStatement(sql); 
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                Registro reg = new Registro();
+                reg.setId(rs.getLong("id"));
+                reg.setUsuarioSistema(rs.getString("usuario_sistema"));
+                reg.setNombreActividad(rs.getString("nombre_actividad"));
+                reg.setCategoria(rs.getString("categoria"));
+                reg.setDetalle(rs.getString("detalle"));
+                reg.setDuracionSeg(rs.getLong("duracion_seg"));
+                reg.setFechaRegistro(rs.getTimestamp("fecha_registro").toLocalDateTime());
+
+                lista.add(reg);
+            }
+
+            LOGGER.log(Level.INFO, "[PERSISTENCIA] Se cargaron {0} registros desde PostgreSQL.", lista.size());
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo crítico al recuperar el historial completo de actividades", e);
+        }
+
+        return lista;
     }
 
     // ============================================

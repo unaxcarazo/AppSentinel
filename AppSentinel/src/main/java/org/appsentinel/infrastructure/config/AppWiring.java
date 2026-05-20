@@ -22,23 +22,23 @@ public class AppWiring {
     public static AppContext construir() {
 
         // ========== ADAPTADORES DE SALIDA ==========
-        PostgreSQLCategoriaAdapter  categorias   = new PostgreSQLCategoriaAdapter();
-        PostgreSQLRepositoryAdapter repo         = new PostgreSQLRepositoryAdapter();
-        JavaFXAlertAdapter          notificacion = new JavaFXAlertAdapter();
+        PostgreSQLCategoriaAdapter categorias = new PostgreSQLCategoriaAdapter();
+        PostgreSQLRepositoryAdapter repo = new PostgreSQLRepositoryAdapter();
+        JavaFXAlertAdapter notificacion = new JavaFXAlertAdapter();
 
         // ========== DOMINIO ==========
         DistractionDetector detector = new DistractionDetector(categorias);
 
         TimeTrackingService tracking = new TimeTrackingService(
-            detector,
-            repo,
-            notificacion,
-            null,
-            AppConfig.getSegundosAvisoPreventivo(),
-            AppConfig.getSegundosBloqueoSesion(),
-            AppConfig.getSegundosPausaReenfoque(),
-            AppConfig.isModoEstricto(),
-            AppConfig.getUsuarioSistema()
+                detector,
+                repo,
+                notificacion,
+                null,
+                AppConfig.getSegundosAvisoPreventivo(),
+                AppConfig.getSegundosBloqueoSesion(),
+                AppConfig.getSegundosPausaReenfoque(),
+                AppConfig.isModoEstricto(),
+                AppConfig.getUsuarioSistema()
         );
         trackingInstance = tracking;
 
@@ -56,29 +56,41 @@ public class AppWiring {
         monitorInstance = monitor;
 
         // ========== CONTEXTO: SOLO PUERTOS, NO ADAPTADORES CONCRETOS ==========
-        return new AppContext(tracking, repo, categorias, notificacion, killer);
+        return new AppContext(tracking, repo, categorias, notificacion, killer,
+                () -> new org.appsentinel.domain.model.SystemMetrics(
+                        15.5,   // cpuTotalUsage
+                        3.2,    // cpuFrequencyGHz
+                        8,      // logicalCores
+                        45.0,   // getRamUsagePercent
+                        7.2,    // ramUsedGB
+                        16.0,   // ramTotalGB
+                        1.2,    // downloadMBps
+                        0.5,    // uploadMBps
+                        java.util.Collections.emptyList() // topProcesses vacía por ahora
+                ));
     }
 
     /**
-     * NUEVO MÉTODO: Asegura el cierre de todos los hilos del sistema al cerrar JavaFX.
-     * Debe ser invocado en el evento de salida de la aplicación principal.
+     * NUEVO MÉTODO: Asegura el cierre de todos los hilos del sistema al cerrar
+     * JavaFX. Debe ser invocado en el evento de salida de la aplicación
+     * principal.
      */
     public static void detenerTodo() {
         System.out.println("[SHUTDOWN] Iniciando apagado limpio de hilos de infraestructura...");
-        
+
         if (monitorInstance != null) {
             // Asumiendo que el monitor tiene un método para detener su bucle nativo
-             monitorInstance.detener(); 
+            monitorInstance.detener();
         }
-        
+
         if (webSocketInstance != null) {
             webSocketInstance.detener(); // Detiene el servidor de sockets y su rate-limiter
         }
-        
+
         if (trackingInstance != null) {
             trackingInstance.finalizar(); // Cancela el Scheduler subyacente del dominio
         }
-        
+
         System.out.println("[SHUTDOWN] Sistema apagado correctamente.");
     }
 }

@@ -22,17 +22,17 @@ import java.util.regex.Pattern;
 /**
  * TimeTrackingService: Orquestador principal del seguimiento de actividad.
  *
- * REGLAS DE NEGOCIO:
- * 1. TODAS las apps detectadas tienen un reloj de existencia continuo (sesiones).
- * 2. Solo la app con FOCO ACTIVO puede ser evaluada para bloqueo.
- * 3. Las apps en segundo plano se registran como "BACKGROUND_X" → nunca se bloquean.
- * 4. Si el usuario está AUSENTE (sin reportes en SEGUNDOS_AUSENCIA_USUARIO), los relojes se congelan.
- * 5. El bloqueo se dispara solo cuando una DISTRACCION supera segundosBloqueo con foco activo.
+ * REGLAS DE NEGOCIO: 1. TODAS las apps detectadas tienen un reloj de existencia
+ * continuo (sesiones). 2. Solo la app con FOCO ACTIVO puede ser evaluada para
+ * bloqueo. 3. Las apps en segundo plano se registran como "BACKGROUND_X" →
+ * nunca se bloquean. 4. Si el usuario está AUSENTE (sin reportes en
+ * SEGUNDOS_AUSENCIA_USUARIO), los relojes se congelan. 5. El bloqueo se dispara
+ * solo cuando una DISTRACCION supera segundosBloqueo con foco activo.
  *
- * INVARIANTE DE PERSISTENCIA:
- * - Una app enfocada → persiste SOLO via persistirChunkFoco (nunca via persistirChunkExistencia).
- * - Una app en segundo plano → persiste SOLO via persistirChunkExistencia.
- * - Esta regla se aplica uniformemente en el ciclo normal, en la purga y en el cierre.
+ * INVARIANTE DE PERSISTENCIA: - Una app enfocada → persiste SOLO via
+ * persistirChunkFoco (nunca via persistirChunkExistencia). - Una app en segundo
+ * plano → persiste SOLO via persistirChunkExistencia. - Esta regla se aplica
+ * uniformemente en el ciclo normal, en la purga y en el cierre.
  */
 public class TimeTrackingService implements MonitorPort, BrowserEventPort {
 
@@ -62,40 +62,40 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
 
     private final Object lockLimpieza = new Object();
 
-    private static final int GRACIA_ESTRICTO_SEG      = 10;
+    private static final int GRACIA_ESTRICTO_SEG = 10;
     private static final int SEGUNDOS_AUSENCIA_USUARIO = 300;
-    private static final int SEGUNDOS_SIN_RASTRO       = 120;
+    private static final int SEGUNDOS_SIN_RASTRO = 120;
 
     // FIX 1: `\.` era una secuencia de escape inválida en Java. El punto literal
     // en regex debe escaparse doble: `\\.` (primero el String, luego el regex).
     private static final Pattern PROTOCOLO_WWW = Pattern.compile("https?://(www\\.)?");
-    private static final Pattern PATH_QUERY    = Pattern.compile("/.*");
+    private static final Pattern PATH_QUERY = Pattern.compile("/.*");
 
     // Navegadores conocidos para resolución jerárquica de foco (WEB prioriza sobre SYS).
     private static final Set<String> NAVEGADORES = Set.of(
-        "chrome", "msedge", "firefox", "opera", "brave", "vivaldi",
-        "chromium", "safari", "arc", "electron"
+            "chrome", "msedge", "firefox", "opera", "brave", "vivaldi",
+            "chromium", "safari", "arc", "electron"
     );
 
     private volatile LocalDateTime ultimoInputUsuario = LocalDateTime.now();
 
     public TimeTrackingService(DistractionDetector detector,
-                               RegistroRepositoryPort repository,
-                               NotificacionPort notificacion,
-                               KillerPort killer,
-                               int segundosAviso,
-                               int segundosBloqueo,
-                               int segundosPausa,   // Reservado, no usado actualmente
-                               boolean modoEstricto,
-                               String usuario) {
-        this.detector        = detector;
-        this.repository      = repository;
-        this.notificacion    = notificacion;
-        this.killer          = killer;
-        this.segundosAviso   = segundosAviso;
+            RegistroRepositoryPort repository,
+            NotificacionPort notificacion,
+            KillerPort killer,
+            int segundosAviso,
+            int segundosBloqueo,
+            int segundosPausa, // Reservado, no usado actualmente
+            boolean modoEstricto,
+            String usuario) {
+        this.detector = detector;
+        this.repository = repository;
+        this.notificacion = notificacion;
+        this.killer = killer;
+        this.segundosAviso = segundosAviso;
         this.segundosBloqueo = segundosBloqueo;
-        this.modoEstricto    = modoEstricto;
-        this.usuario         = usuario;
+        this.modoEstricto = modoEstricto;
+        this.usuario = usuario;
 
         scheduler.scheduleAtFixedRate(this::cicloDeMantenimiento, 10, 10, TimeUnit.SECONDS);
 
@@ -106,7 +106,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Puertos de entrada
     // -------------------------------------------------------------------------
-
     @Override
     public void reportarActividadSistema(String proceso, String titulo, int pid) {
         ultimoInputUsuario = LocalDateTime.now();
@@ -118,25 +117,27 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         ultimoInputUsuario = LocalDateTime.now();
         String dominio = extraerDominio(url);
         procesarActividad(
-            "WEB|" + dominio,
-            "Web: " + (titulo != null ? titulo : dominio),
-            detector.clasificarUrl(url),
-            dominio,
-            tabId,
-            -1
+                "WEB|" + dominio,
+                "Web: " + (titulo != null ? titulo : dominio),
+                detector.clasificarUrl(url),
+                dominio,
+                tabId,
+                -1
         );
     }
 
     // -------------------------------------------------------------------------
     // Utilidades de dominio: jerarquía de foco
     // -------------------------------------------------------------------------
-
     /**
-     * Determina si un nombre de proceso corresponde a un navegador web conocido.
-     * Usa coincidencia exacta (sin .exe, en minúsculas) para evitar falsos positivos.
+     * Determina si un nombre de proceso corresponde a un navegador web
+     * conocido. Usa coincidencia exacta (sin .exe, en minúsculas) para evitar
+     * falsos positivos.
      */
     private boolean esProcesoNavegador(String nombreProceso) {
-        if (nombreProceso == null) return false;
+        if (nombreProceso == null) {
+            return false;
+        }
         String n = nombreProceso.toLowerCase().replace(".exe", "");
         return NAVEGADORES.contains(n);
     }
@@ -144,18 +145,22 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     /**
      * Retorna la clave de la entrada web activa reciente, o null si no existe.
      *
-     * FIX 2: 'activas' tiene MÁXIMO UNA entrada por invariante de diseño, por lo que
-     * iterar con entrySet() era innecesariamente confuso. Se usa findFirst() para
-     * reflejar con precisión el contrato del mapa y evitar recorridos inútiles.
+     * FIX 2: 'activas' tiene MÁXIMO UNA entrada por invariante de diseño, por
+     * lo que iterar con entrySet() era innecesariamente confuso. Se usa
+     * findFirst() para reflejar con precisión el contrato del mapa y evitar
+     * recorridos inútiles.
      *
      * Usa la CLAVE del mapa ("WEB|") como fuente de verdad en lugar del nombre,
-     * lo que evita falsos negativos si el título de la pestaña está vacío o cambia.
+     * lo que evita falsos negativos si el título de la pestaña está vacío o
+     * cambia.
      */
     private String claveWebActivaReciente(LocalDateTime ahora) {
         Map.Entry<String, SeguimientoActividad> entry = activas.entrySet()
-            .stream().findFirst().orElse(null);
+                .stream().findFirst().orElse(null);
 
-        if (entry == null || !entry.getKey().startsWith("WEB|")) return null;
+        if (entry == null || !entry.getKey().startsWith("WEB|")) {
+            return null;
+        }
 
         long segundos = Duration.between(entry.getValue().ultimaVezVista, ahora).getSeconds();
         return segundos < 60 ? entry.getKey() : null;
@@ -164,9 +169,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Procesamiento de actividad
     // -------------------------------------------------------------------------
-
     private void procesarActividad(String clave, String nombre, String categoria,
-                                   String detalle, int tabId, int pid) {
+            String detalle, int tabId, int pid) {
         synchronized (lockLimpieza) {
             LocalDateTime ahora = LocalDateTime.now();
 
@@ -189,7 +193,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
             }
 
             // --- Foco activo con resolución jerárquica ---
-            boolean esMismaApp    = activas.containsKey(clave);
+            boolean esMismaApp = activas.containsKey(clave);
             boolean esNavegadorSO = clave.startsWith("SYS|") && esProcesoNavegador(nombre);
 
             if (!esMismaApp) {
@@ -225,8 +229,12 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
                 SeguimientoActividad seg = activas.get(clave);
                 if (seg != null) {
                     seg.ultimaVezVista = ahora;
-                    if (tabId > 0) seg.tabId = tabId;
-                    if (pid   > 0) seg.pid   = pid;
+                    if (tabId > 0) {
+                        seg.tabId = tabId;
+                    }
+                    if (pid > 0) {
+                        seg.pid = pid;
+                    }
                 }
             }
         }
@@ -235,7 +243,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Ciclo de mantenimiento
     // -------------------------------------------------------------------------
-
     private void cicloDeMantenimiento() {
         synchronized (lockLimpieza) {
             if (detectarAusenciaUsuario()) {
@@ -280,9 +287,9 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
 
             // Bloqueo solo si es distracción con foco activo
             if (Categoria.DISTRACCION.equals(seg.categoria)) {
-                long focoHistorico  = obtenerFocoAcumulado(clave);
+                long focoHistorico = obtenerFocoAcumulado(clave);
                 long segsFocoActual = Duration.between(seg.inicio, ahora).getSeconds();
-                long totalFoco      = focoHistorico + segsFocoActual;
+                long totalFoco = focoHistorico + segsFocoActual;
 
                 if (modoEstricto) {
                     aplicarModoEstricto(clave, seg, totalFoco);
@@ -296,13 +303,39 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Persistencia
     // -------------------------------------------------------------------------
-
     /**
-     * Persiste un chunk de SEGUNDO PLANO. Solo debe llamarse cuando la app NO tiene foco.
-     * La categoría se prefija con "BACKGROUND_" para distinguirla del tiempo de foco.
+     * Persiste un chunk de SEGUNDO PLANO. Solo debe llamarse cuando la app NO
+     * tiene foco. La categoría se prefija con "BACKGROUND_" para distinguirla
+     * del tiempo de foco.
      */
     private void persistirChunkExistencia(SesionExistencia sesion, long segs, LocalDateTime ahora) {
-        Registro reg = new Registro();
+        String catBackground = "BACKGROUND_" + sesion.categoria;
+
+        // 1. Intentar buscar si el último registro en la BD coincide para actualizarlo
+        Registro ultimoReg = repository.obtenerUltimoRegistroPorUsuario(usuario);
+
+        if (ultimoReg != null
+                && ultimoReg.getNombreActividad().equalsIgnoreCase(sesion.nombre)
+                && ultimoReg.getCategoria().equalsIgnoreCase(catBackground)) {
+
+            // 🌟 ANIDACIÓN: Es la misma app en background, acumulamos los segundos
+            ultimoReg.setDuracionSeg(ultimoReg.getDuracionSeg() + segs);
+            ultimoReg.setFechaRegistro(ahora); // Actualizamos la última estampa de tiempo
+            repository.guardar(ultimoReg);    // El repositorio detecta el ID y hace un UPDATE
+
+        } else {
+            // Es un proceso o estado nuevo: hacemos un INSERT limpio
+            Registro reg = new Registro();
+            reg.setUsuarioSistema(usuario);
+            reg.setNombreActividad(sesion.nombre);
+            reg.setCategoria(catBackground);
+            reg.setDetalle("Segundo plano");
+            reg.setDuracionSeg(segs);
+            reg.setFechaRegistro(ahora);
+            repository.guardar(reg);
+        }
+
+        /*   Registro reg = new Registro();
         reg.setUsuarioSistema(usuario);
         reg.setNombreActividad(sesion.nombre);
         reg.setCategoria("BACKGROUND_" + sesion.categoria);
@@ -310,15 +343,49 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         reg.setDuracionSeg(segs);
         reg.setFechaRegistro(ahora);
         repository.guardar(reg);
+         */
     }
 
     /**
-     * Persiste un chunk de FOCO ACTIVO y acumula los segundos en la sesión de existencia.
-     * Es la única función que debe registrar tiempo de la app enfocada.
+     * Persiste un chunk de FOCO ACTIVO y acumula los segundos en la sesión de
+     * existencia. Es la única función que debe registrar tiempo de la app
+     * enfocada.
      */
     private void persistirChunkFoco(String clave, SeguimientoActividad seg,
-                                    long segs, LocalDateTime ahora) {
-        Registro reg = new Registro();
+            long segs, LocalDateTime ahora) {
+
+        // 1. Intentar buscar si la última aplicación con foco activo coincide en el historial
+        Registro ultimoReg = repository.obtenerUltimoRegistroPorUsuario(usuario);
+
+        if (ultimoReg != null
+                && ultimoReg.getNombreActividad().equalsIgnoreCase(seg.nombre)
+                && ultimoReg.getCategoria().equalsIgnoreCase(seg.categoria)) {
+
+            // 🌟 ANIDACIÓN: El usuario sigue usando la misma app enfocada, sumamos el tiempo
+            ultimoReg.setDuracionSeg(ultimoReg.getDuracionSeg() + segs);
+            ultimoReg.setFechaRegistro(ahora);
+            repository.guardar(ultimoReg);    // Modifica la fila existente en la BD
+
+        } else {
+            // Aplicación nueva en foco: insertamos fila nueva en la tabla
+            Registro reg = new Registro();
+            reg.setUsuarioSistema(usuario);
+            reg.setNombreActividad(seg.nombre);
+            reg.setCategoria(seg.categoria);
+            reg.setDetalle("Foco activo: " + seg.detalle);
+            reg.setDuracionSeg(segs);
+            reg.setFechaRegistro(ahora);
+            repository.guardar(reg);
+        }
+
+        SesionExistencia sesion = sesiones.get(clave);
+        if (sesion != null) {
+            sesion.segundosFocoAcumulado += segs;
+        } else {
+            LOGGER.log(Level.WARNING,
+                    "[FOCO] Sin sesión de existencia para {0}. Acumulado no guardado.", clave);
+        }
+        /*  Registro reg = new Registro();
         reg.setUsuarioSistema(usuario);
         reg.setNombreActividad(seg.nombre);
         reg.setCategoria(seg.categoria);
@@ -332,8 +399,9 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
             sesion.segundosFocoAcumulado += segs;
         } else {
             LOGGER.log(Level.WARNING,
-                "[FOCO] Sin sesión de existencia para {0}. Acumulado no guardado.", clave);
+                    "[FOCO] Sin sesión de existencia para {0}. Acumulado no guardado.", clave);
         }
+         */
     }
 
     private long obtenerFocoAcumulado(String clave) {
@@ -344,12 +412,11 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Verificación de límites de distracción
     // -------------------------------------------------------------------------
-
     private void aplicarModoEstricto(String clave, SeguimientoActividad seg, long totalFoco) {
         if (totalFoco >= segundosAviso && seg.estado == EstadoDistraccion.INICIADA) {
             seg.estado = EstadoDistraccion.AVISO_PREVENTIVO;
             notificacion.mostrarAlertaDistraccion(
-                "MODO ESTRICTO: cierre en " + GRACIA_ESTRICTO_SEG + " s", seg.nombre
+                    "MODO ESTRICTO: cierre en " + GRACIA_ESTRICTO_SEG + " s", seg.nombre
             );
         }
         if (totalFoco >= segundosAviso + GRACIA_ESTRICTO_SEG
@@ -364,7 +431,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         if (seg.estado == EstadoDistraccion.INICIADA && totalFoco >= segundosAviso) {
             seg.estado = EstadoDistraccion.AVISO_PREVENTIVO;
             notificacion.mostrarAlertaDistraccion(
-                "Llevas " + fmt(totalFoco) + " con foco en " + seg.nombre, seg.nombre
+                    "Llevas " + fmt(totalFoco) + " con foco en " + seg.nombre, seg.nombre
             );
         } else if (seg.estado == EstadoDistraccion.AVISO_PREVENTIVO && totalFoco >= segundosBloqueo) {
             seg.estado = EstadoDistraccion.BLOQUEO_SESION;
@@ -376,13 +443,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Cierre forzoso
     // -------------------------------------------------------------------------
-
     private void cerrar(String clave, SeguimientoActividad seg) {
-        if (killer == null) return;
+        if (killer == null) {
+            return;
+        }
 
         if (!activas.containsKey(clave)) {
             LOGGER.log(Level.WARNING,
-                "[KILL] Ignorado: {0} ya no tiene el foco al intentar cerrar.", seg.nombre);
+                    "[KILL] Ignorado: {0} ya no tiene el foco al intentar cerrar.", seg.nombre);
             return;
         }
 
@@ -404,23 +472,24 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Purga de sesiones muertas
     // -------------------------------------------------------------------------
-
     /**
-     * Elimina sesiones de apps que han desaparecido del sistema.
-     * Antes de eliminar, persiste el chunk pendiente respetando el invariante:
-     * - App enfocada → persistirChunkFoco.
-     * - App en segundo plano → persistirChunkExistencia.
+     * Elimina sesiones de apps que han desaparecido del sistema. Antes de
+     * eliminar, persiste el chunk pendiente respetando el invariante: - App
+     * enfocada → persistirChunkFoco. - App en segundo plano →
+     * persistirChunkExistencia.
      */
     private void purgarSesionesMuertas() {
         List<String> clavesAEliminar = new ArrayList<>();
         LocalDateTime ahora = LocalDateTime.now();
 
         for (Map.Entry<String, SesionExistencia> entry : sesiones.entrySet()) {
-            String clave            = entry.getKey();
+            String clave = entry.getKey();
             SesionExistencia sesion = entry.getValue();
 
             long segsSinRastro = Duration.between(sesion.ultimaVezVista, ahora).getSeconds();
-            if (segsSinRastro <= SEGUNDOS_SIN_RASTRO) continue;
+            if (segsSinRastro <= SEGUNDOS_SIN_RASTRO) {
+                continue;
+            }
 
             SeguimientoActividad seg = activas.get(clave);
 
@@ -450,11 +519,10 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Ciclo de vida del servicio
     // -------------------------------------------------------------------------
-
     /**
-     * Cierra el servicio y persiste los chunks pendientes respetando el invariante:
-     * - Apps enfocadas → persistirChunkFoco (primero).
-     * - Apps en segundo plano → persistirChunkExistencia (excluye las ya persistidas).
+     * Cierra el servicio y persiste los chunks pendientes respetando el
+     * invariante: - Apps enfocadas → persistirChunkFoco (primero). - Apps en
+     * segundo plano → persistirChunkExistencia (excluye las ya persistidas).
      */
     public void finalizar() {
         scheduler.shutdown();
@@ -499,13 +567,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Utilidades
     // -------------------------------------------------------------------------
-
     private String fmt(long s) {
         return (s / 60) + "m " + (s % 60) + "s";
     }
 
     private String extraerDominio(String url) {
-        if (url == null) return "Desconocido";
+        if (url == null) {
+            return "Desconocido";
+        }
         String sinProtocolo = PROTOCOLO_WWW.matcher(url).replaceAll("");
         return PATH_QUERY.matcher(sinProtocolo).replaceAll("").toLowerCase();
     }
@@ -513,12 +582,12 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
     // -------------------------------------------------------------------------
     // Tipos internos
     // -------------------------------------------------------------------------
-
     public enum EstadoDistraccion {
         INICIADA, AVISO_PREVENTIVO, BLOQUEO_SESION, PAUSA_REENFOQUE
     }
 
     private static class SeguimientoActividad {
+
         String nombre, detalle, categoria;
         LocalDateTime inicio;
         LocalDateTime ultimaVezVista;
@@ -527,18 +596,19 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         EstadoDistraccion estado = EstadoDistraccion.INICIADA;
 
         SeguimientoActividad(String nombre, String detalle, String categoria,
-                             LocalDateTime inicio, int tabId, int pid) {
-            this.nombre         = nombre;
-            this.detalle        = detalle;
-            this.categoria      = categoria;
-            this.inicio         = inicio;
+                LocalDateTime inicio, int tabId, int pid) {
+            this.nombre = nombre;
+            this.detalle = detalle;
+            this.categoria = categoria;
+            this.inicio = inicio;
             this.ultimaVezVista = inicio;
-            this.tabId          = tabId;
-            this.pid            = pid;
+            this.tabId = tabId;
+            this.pid = pid;
         }
     }
 
     private static class SesionExistencia {
+
         final String clave;
         final String nombre;
         String categoria;
@@ -548,12 +618,12 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort {
         boolean notificadaSinClasificar;
 
         SesionExistencia(String clave, String nombre, String categoria, LocalDateTime inicio) {
-            this.clave                   = clave;
-            this.nombre                  = nombre;
-            this.categoria               = categoria;
-            this.inicio                  = inicio;
-            this.ultimaVezVista          = inicio;
-            this.segundosFocoAcumulado   = 0L;
+            this.clave = clave;
+            this.nombre = nombre;
+            this.categoria = categoria;
+            this.inicio = inicio;
+            this.ultimaVezVista = inicio;
+            this.segundosFocoAcumulado = 0L;
             this.notificadaSinClasificar = false;
         }
     }

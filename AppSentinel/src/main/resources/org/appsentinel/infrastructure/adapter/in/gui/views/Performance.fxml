@@ -1,14 +1,112 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
-<?import java.lang.*?>
-<?import java.net.*?>
-<?import java.util.*?>
-<?import javafx.scene.*?>
+<?import javafx.geometry.*?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.shape.SVGPath?>
+<?import javafx.scene.chart.*?>
 
-<AnchorPane id="AnchorPane" prefHeight="400.0" prefWidth="600.0" styleClass="mainFxmlClass" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.appsentinel.infrastructure.gui.controller.PerformanceController">
-    <stylesheets>
-        <URL value="@/styles/performance.css"/>
-    </stylesheets>
-</AnchorPane>
+
+<ScrollPane fitToWidth="true" styleClass="edge-to-edge" 
+            style="-fx-background-color: transparent;"
+            stylesheets="@/styles/performance.css"
+            xmlns="http://javafx.com/javafx/21" 
+            xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="org.appsentinel.infrastructure.gui.controller.PerformanceController">
+    
+    
+    <content>
+        <VBox spacing="30" styleClass="content-area">
+            <padding>
+                <Insets top="30" right="30" bottom="30" left="30"/>
+            </padding>
+
+
+            <!-- Header -->
+            <HBox spacing="15" alignment="CENTER_LEFT">
+                <SVGPath content="M2 13h4l3-9 4 18 4-18 3 9h4" strokeWidth="2.5" stroke="#00E5FF" fill="transparent" styleClass="perf-icon-pulse"/>
+                <VBox spacing="5">
+                    <Label text="PERFORMANCE &amp; PROCESSES" styleClass="page-title"/>
+                    <Label text="Real-time system resource monitoring." styleClass="page-subtitle"/>
+                </VBox>
+            </HBox>
+
+
+            <!-- Metrics Summary -->
+            <HBox spacing="20">
+                <!-- CPU CARD -->
+                <VBox spacing="15" styleClass="metric-card" HBox.hgrow="ALWAYS">
+                    <HBox alignment="CENTER_LEFT" spacing="10">
+                        <SVGPath content="M14,2H4A2,2,0,0,0,2,4V14a2,2,0,0,0,2,2H14a2,2,0,0,0,2,-2V4A2,2,0,0,0,14,2ZM14,14H4V4H14ZM6,6H12V12H6Z" fill="#888"/>
+                        <Label text="Global CPU Usage" minWidth="-Infinity" style="-fx-text-fill: #CCC; -fx-font-size: 14px;"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Label fx:id="lblCpuLoad" text="0%" minWidth="-Infinity" style="-fx-text-fill: #00E5FF; -fx-font-size: 28px; -fx-font-weight: bold;"/>
+                    </HBox>
+                    <ProgressBar fx:id="progressCpu" progress="0.0" maxWidth="Infinity" prefHeight="10" styleClass="progress-bar-cyan"/>
+                    <HBox>
+                        <Label fx:id="lblCpuFreq" text="0.0 GHz" minWidth="-Infinity" style="-fx-text-fill: #888; -fx-font-size: 11px;"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Label fx:id="lblCpuCores" text="0 Cores" minWidth="-Infinity" style="-fx-text-fill: #888; -fx-font-size: 11px;"/>
+                    </HBox>
+                </VBox>
+
+
+                <!-- RAM CARD -->
+                <VBox spacing="15" styleClass="metric-card" HBox.hgrow="ALWAYS">
+                    <HBox alignment="CENTER_LEFT" spacing="10">
+                        <SVGPath content="M2,6v12h20V6H2zm18,10H4V8h16v8zM6,10h2v4H6v-4zm4,0h2v4h-2v-4zm4,0h2v4h-2v-4z" fill="#888"/>
+                        <Label text="RAM Memory Usage" minWidth="-Infinity" style="-fx-text-fill: #CCC; -fx-font-size: 14px;"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Label fx:id="lblRamUsage" text="0%" minWidth="-Infinity" style="-fx-text-fill: #FF3D00; -fx-font-size: 28px; -fx-font-weight: bold;"/>
+                    </HBox>
+                    <ProgressBar fx:id="progressRam" progress="0.0" maxWidth="Infinity" prefHeight="10" styleClass="progress-bar-orange"/>
+                    <HBox>
+                        <Label fx:id="lblRamSub" text="0.0 GB In Use" minWidth="-Infinity" style="-fx-text-fill: #888; -fx-font-size: 11px;"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Label fx:id="lblRamTotal" text="0.0 GB Total" minWidth="-Infinity" style="-fx-text-fill: #888; -fx-font-size: 11px;"/>
+                    </HBox>
+                </VBox>
+
+
+                <!-- NETWORK CARD -->
+                <VBox spacing="5" styleClass="metric-card" HBox.hgrow="ALWAYS">
+                    <HBox alignment="CENTER_LEFT" spacing="10">
+                        <SVGPath content="M1,9l2,2c4.97-4.97,13.03-4.97,18,0l2-2C16.93,2.93,7.07,2.93,1,9zm8,8l4,4l4-4c-2.21-2.21-5.79-2.21-8,0zm-4-4l2,2c2.76-2.76,7.24-2.76,10,0l2-2C15.14,9.14,8.86,9.14,5,13z" fill="#888"/>
+                        <Label text="Network I/O" style="-fx-text-fill: #CCC; -fx-font-size: 14px;"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <HBox spacing="10" alignment="CENTER_RIGHT">
+                            <Label fx:id="lblNetDown" text="0.0 MB/s ⬇" style="-fx-text-fill: #CCC; -fx-font-size: 12px;"/>
+                            <Label fx:id="lblNetUp" text="0.0 MB/s ⬆" style="-fx-text-fill: #CCC; -fx-font-size: 12px;"/>
+                        </HBox>
+                    </HBox>
+                    <AreaChart fx:id="netChart" prefHeight="80" animated="false" createSymbols="false" legendVisible="false" styleClass="perf-chart">
+                        <xAxis><NumberAxis forceZeroInRange="false" tickLabelsVisible="false" tickMarkVisible="false" opacity="0"/></xAxis>
+                        <yAxis><NumberAxis tickLabelsVisible="false" tickMarkVisible="false" opacity="0"/></yAxis>
+                    </AreaChart>
+                </VBox>
+            </HBox>
+
+
+            <!-- Process Table -->
+            <VBox spacing="15" styleClass="section-panel" VBox.vgrow="ALWAYS">
+                <HBox alignment="CENTER_LEFT">
+                    <Label text="LIVE PROCESS MEMORY &amp; CPU TABLE" styleClass="section-title"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+                    <TextField fx:id="txtSearchProcess" promptText="Search process..." styleClass="search-field" prefWidth="250"/>
+                </HBox>
+                <TableView fx:id="tableProcesses" VBox.vgrow="ALWAYS" styleClass="table-view" minHeight="400">
+                    <columns>
+                        <TableColumn fx:id="colName" prefWidth="250" text="APP NAME" />
+                        <TableColumn fx:id="colCategory" prefWidth="120" text="TYPE" />
+                        <TableColumn fx:id="colCpu" prefWidth="150" text="CPU USAGE %" />
+                        <TableColumn fx:id="colRam" prefWidth="150" text="MEMORY %" />
+                        <TableColumn fx:id="colTime" prefWidth="150" text="ACTIVE TIME" />
+                    </columns>
+                    <columnResizePolicy>
+                        <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                    </columnResizePolicy>
+                </TableView>
+            </VBox>
+        </VBox>
+    </content>
+</ScrollPane>
+

@@ -1,10 +1,8 @@
 package org.appsentinel.infrastructure.gui.controller;
 
-// IMPORTS CON LAS RUTAS EXACTAS DE TUS PAQUETES
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 
-// IMPORTS JAVAFX Y JAVA
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
 import javafx.scene.control.ComboBox;
@@ -24,7 +22,7 @@ public class UsageHistoryController implements Controllable {
     private RegistroRepositoryPort registroRepository;
 
     public UsageHistoryController() {
-        // Constructor vacío para permitir la inyección de dependencias diferida
+        // Constructor vacío para inyección diferida
     }
 
     @FXML
@@ -34,25 +32,19 @@ public class UsageHistoryController implements Controllable {
     @FXML
     private VBox vboxTableRows;
 
-    // Uso estricto de la entidad de dominio real 'Registro'
     private List<Registro> listaCompletaMaster;
 
     @FXML
     public void initialize() {
-        // 1. Configuración de la interfaz visual base
         comboFilter.getItems().clear();
         comboFilter.getItems().addAll("All Activities", "Work Only", "Distractions Only");
         comboFilter.setValue("All Activities");
 
-        // 2. Escuchadores listos para reaccionar cuando el usuario filtre en tiempo real
         txtSearch.textProperty().addListener((observable, oldValue, newValue) -> aplicarFiltrosCombinados());
         comboFilter.valueProperty().addListener((observable, oldValue, newValue) -> aplicarFiltrosCombinados());
     }
 
-    
-
     private void aplicarFiltrosCombinados() {
-        // Evitamos fallos si el usuario busca antes de que se complete el método init()
         if (listaCompletaMaster == null) {
             return;
         }
@@ -78,10 +70,17 @@ public class UsageHistoryController implements Controllable {
     private void actualizarTabla(List<Registro> lista) {
         vboxTableRows.getChildren().clear();
 
+        // 🌟 LA CLAVE: Asegura que el contenedor de filas tenga acceso directo al CSS
+        if (vboxTableRows.getScene() != null && !vboxTableRows.getStylesheets().contains("/styles/usagehistory.css")) {
+            vboxTableRows.getStylesheets().add(getClass().getResource("/styles/usagehistory.css").toExternalForm());
+        }
+
         if (lista == null || lista.isEmpty()) {
-            HBox emptyRow = new HBox(new Label("No records found matches criteria."));
+            Label lblEmpty = new Label("No records found matches criteria.");
+            lblEmpty.getStyleClass().add("table-empty-label");
+            HBox emptyRow = new HBox(lblEmpty);
             emptyRow.setAlignment(Pos.CENTER);
-            emptyRow.setPadding(new javafx.geometry.Insets(20));
+            emptyRow.setPadding(new javafx.geometry.Insets(30));
             vboxTableRows.getChildren().add(emptyRow);
             return;
         }
@@ -90,32 +89,28 @@ public class UsageHistoryController implements Controllable {
 
         for (Registro item : lista) {
             HBox row = new HBox();
-            row.getStyleClass().add("table-row");
+            row.getStyleClass().add("table-row-custom");
             row.setAlignment(Pos.CENTER_LEFT);
-            row.setSpacing(10);
 
-            // 1. Bloque Nombre + Categoría perfectamente alineados
-            VBox nameBlock = new VBox(5);
+            // Bloque Nombre + Categoría
+            VBox nameBlock = new VBox(4);
             nameBlock.setPrefWidth(250);
             nameBlock.setMinWidth(250);
             nameBlock.setMaxWidth(250);
             nameBlock.setAlignment(Pos.CENTER_LEFT);
 
             Label lblName = new Label(item.getNombreActividad());
-            lblName.getStyleClass().add("app-name");
+            lblName.getStyleClass().add("app-name-label");
 
-            HBox catBadgeContainer = new HBox();
-            Label lblCat = new Label(item.getCategoria());
-
+            Label lblCat = new Label(item.getCategoria().toUpperCase());
             if ("TRABAJO".equalsIgnoreCase(item.getCategoria())) {
-                lblCat.getStyleClass().add("badge-cat-work");
+                lblCat.getStyleClass().add("badge-work");
             } else {
-                lblCat.getStyleClass().add("badge-cat-distraction");
+                lblCat.getStyleClass().add("badge-distraction");
             }
-            catBadgeContainer.getChildren().add(lblCat);
-            nameBlock.getChildren().addAll(lblName, catBadgeContainer);
+            nameBlock.getChildren().addAll(lblName, lblCat);
 
-            // Regiones espaciadoras elásticas
+            // Separadores elásticos
             Region spacer1 = new Region();
             HBox.setHgrow(spacer1, Priority.ALWAYS);
             Region spacer2 = new Region();
@@ -123,37 +118,38 @@ public class UsageHistoryController implements Controllable {
             Region spacer3 = new Region();
             HBox.setHgrow(spacer3, Priority.ALWAYS);
 
-            // 2. Celda: Hora de Inicio
-            String horaFormateada = "00:00:00";
-            if (item.getFechaRegistro() != null) {
-                horaFormateada = item.getFechaRegistro().format(timeFormatter);
-            }
+            // Hora de Inicio
+            String horaFormateada = (item.getFechaRegistro() != null) ? item.getFechaRegistro().format(timeFormatter) : "00:00:00";
             Label lblStartTime = new Label(horaFormateada);
-            lblStartTime.getStyleClass().add("table-cell-text");
+            lblStartTime.getStyleClass().add("table-cell-custom");
             lblStartTime.setPrefWidth(120);
+            lblStartTime.setMinWidth(120);
             lblStartTime.setAlignment(Pos.CENTER);
 
-            // 3. Celda: Duración
+            // Duración
             Label lblDuration = new Label(formatearTiempo(item.getDuracionSeg()));
-            lblDuration.getStyleClass().add("table-cell-text");
+            lblDuration.getStyleClass().add("table-cell-custom");
             lblDuration.setPrefWidth(120);
+            lblDuration.setMinWidth(120);
             lblDuration.setAlignment(Pos.CENTER);
 
-            // 4. Celda: Estado Bloqueo
+            // Estado (Aquí se asignan las clases para Verde y Rojo)
             boolean esBloqueado = "BLOCKED".equalsIgnoreCase(item.getDetalle())
                     || ("DISTRACCION".equalsIgnoreCase(item.getCategoria()) && item.getDuracionSeg() == 0);
 
             Label lblStatus = new Label(esBloqueado ? "BLOCKED" : "ALLOWED");
             lblStatus.setPrefWidth(100);
+            lblStatus.setMinWidth(100);
             lblStatus.setAlignment(Pos.CENTER);
 
-            if (!esBloqueado) {
-                lblStatus.getStyleClass().add("badge-status-allowed");
+            // Limpiamos estilos anteriores y añadimos la clase correspondiente
+            lblStatus.getStyleClass().removeAll("status-allowed", "status-blocked");
+            if (esBloqueado) {
+                lblStatus.getStyleClass().add("status-blocked");
             } else {
-                lblStatus.getStyleClass().add("badge-status-blocked");
+                lblStatus.getStyleClass().add("status-allowed");
             }
 
-            // Ensamblaje estructural
             row.getChildren().addAll(nameBlock, spacer1, lblStartTime, spacer2, lblDuration, spacer3, lblStatus);
             vboxTableRows.getChildren().add(row);
         }
@@ -168,26 +164,11 @@ public class UsageHistoryController implements Controllable {
         return String.format("%02dh %02dm", horas, minutes);
     }
 
-    // =========================================================================
-    // 🔄 MÉTODO DE INICIALIZACIÓN CONTRATADO POR LA INTERFAZ CONTROLLABLE
-    // =========================================================================
     @Override
     public void init(AppContext ctx) {
-        // 1. Extraemos el puerto de registros desde el contexto unificado de tu compañera
         this.registroRepository = ctx.repositorio();
-
-        // 2. Extraemos el usuario del sistema operativo de forma segura (tu lógica original)
-        String usuarioActual = System.getProperty("user.name");
-        if (usuarioActual == null) {
-            usuarioActual = "DAW1";
-        }
-
-        // 3. Cargamos los datos reales desde la base de datos de PostgreSQL
         this.listaCompletaMaster = registroRepository.obtenerHistorialCompleto();
-
-        // 4. Renderizamos la tabla elástica por primera vez
         actualizarTabla(this.listaCompletaMaster);
-
         System.out.println("⏳ UsageHistory cargado con éxito en el ecosistema del grupo usando AppContext.");
     }
 }

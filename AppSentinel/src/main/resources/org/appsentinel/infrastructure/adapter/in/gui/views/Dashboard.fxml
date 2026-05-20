@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import java.net.URL?>
+<?import java.lang.String?>
 <?import javafx.scene.chart.BarChart?>
 <?import javafx.scene.chart.CategoryAxis?>
 <?import javafx.scene.chart.NumberAxis?>
@@ -13,23 +13,17 @@
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 
-
 <ScrollPane fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" 
             style="-fx-background-color: #0d1117;" 
             xmlns="http://javafx.com/javafx/26" 
             xmlns:fx="http://javafx.com/fxml/1" 
+            fx:id="rootPane"
             fx:controller="org.appsentinel.infrastructure.gui.controller.DashboardController">   
     <content>
-              <VBox spacing="20" styleClass="dashboard-container">
-          
-            <stylesheets>
-                <URL value="@/org/appsentinel/infrastructure/adapter/in/gui/views/styles/dashboard.css" />
-            </stylesheets>
-      
+        <VBox spacing="20" styleClass="dashboard-container">
+         
             <children>
-              
-                <!-- Apartado Encabezado (boton descarga de html y fecha) --> 
-              
+            
                 <HBox alignment="CENTER_LEFT" spacing="20" style="-fx-padding: 0 0 10 0;">
                     <VBox spacing="5" HBox.hgrow="ALWAYS">
                         <Label styleClass="dashboard-main-title" text="GENERAL DASHBOARD" />
@@ -53,8 +47,6 @@
                     </HBox>
                 </HBox>
               
-                <!-- Apartado Horas (total, de trabajo y distraccion) --> 
-              
                 <HBox spacing="15">
                     <VBox styleClass="kpi-card" HBox.hgrow="ALWAYS">
                         <Label styleClass="kpi-title" text="TOTAL HOURS" />
@@ -62,16 +54,38 @@
                         <Label styleClass="kpi-stat-positive" text="↗ +1.2h vs yesterday" />
                     </VBox>
                   
-                    <VBox styleClass="kpi-card, work-card" HBox.hgrow="ALWAYS">
-                        <Label styleClass="kpi-title, text-cian" text="WORK TIME" />
-                        <Label fx:id="lblWorkTime" styleClass="kpi-value" text="06h 25m" />
-                        <ProgressBar maxWidth="Infinity" progress="0.75" styleClass="work-progress" />
+                    <VBox HBox.hgrow="ALWAYS">
+                        <styleClass>
+                            <String fx:value="kpi-card" />
+                            <String fx:value="work-card" />
+                        </styleClass>
+                        <children>
+                            <Label text="WORK TIME">
+                                <styleClass>
+                                    <String fx:value="kpi-title" />
+                                    <String fx:value="text-cian" />
+                                </styleClass>
+                            </Label>
+                            <Label fx:id="lblWorkTime" styleClass="kpi-value" text="06h 25m" />
+                            <ProgressBar maxWidth="Infinity" progress="0.75" styleClass="work-progress" />
+                        </children>
                     </VBox>
                   
-                    <VBox styleClass="kpi-card, distraction-card" HBox.hgrow="ALWAYS">
-                        <Label styleClass="kpi-title, text-naranja" text="DISTRACTIONS TIME" />
-                        <Label fx:id="lblDistractionTime" styleClass="kpi-value" text="01h 49m" />
-                        <ProgressBar maxWidth="Infinity" progress="0.25" styleClass="distraction-progress" />
+                    <VBox HBox.hgrow="ALWAYS">
+                        <styleClass>
+                            <String fx:value="kpi-card" />
+                            <String fx:value="distraction-card" />
+                        </styleClass>
+                        <children>
+                            <Label text="DISTRACTIONS TIME">
+                                <styleClass>
+                                    <String fx:value="kpi-title" />
+                                    <String fx:value="text-naranja" />
+                                </styleClass>
+                            </Label>
+                            <Label fx:id="lblDistractionTime" styleClass="kpi-value" text="01h 49m" />
+                            <ProgressBar maxWidth="Infinity" progress="0.25" styleClass="distraction-progress" />
+                        </children>
                     </VBox>
                   
                     <VBox alignment="CENTER" prefWidth="100" styleClass="kpi-card">
@@ -80,8 +94,6 @@
                         <Label style="-fx-text-fill: #ff5c00;" text="⚠" />
                     </VBox>
                 </HBox>
-              
-                <!-- Apartado Grafica de distracciones - tiempo aprovechado  y marcador de rendimiento--> 
               
                 <HBox spacing="20" VBox.vgrow="ALWAYS">
                     <VBox styleClass="chart-section" HBox.hgrow="ALWAYS">
@@ -111,9 +123,6 @@
                 </HBox>
               
                   
-                <!-- Apartado Rankings  --> 
-              
-                <!-- TRABAJO -->
                 <HBox prefHeight="300" spacing="20">
                     <VBox styleClass="ranking-section" HBox.hgrow="ALWAYS">
                         <Label styleClass="section-header-small" text="TOP 5 WORK APPS" />
@@ -170,7 +179,7 @@
                                     </HBox>
                                 </VBox>
                             </HBox>
-                         
+                          
       
                             <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
                                 <Label styleClass="ranking-pos" text="#4" />
@@ -208,9 +217,13 @@
                         </VBox>
                     </VBox>
                   
-                    <!-- DISTRACCIONES -->
                     <VBox styleClass="ranking-section" HBox.hgrow="ALWAYS">
-                        <Label styleClass="section-header-small, text-naranja" text="TOP 5 DISTRACTIONS" />
+                        <Label text="TOP 5 DISTRACTIONS">
+                            <styleClass>
+                                <String fx:value="section-header-small" />
+                                <String fx:value="text-naranja" />
+                            </styleClass>
+                        </Label>
                         <VBox fx:id="vboxTopDistractions" spacing="10" styleClass="ranking-container">
                             <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
                                 <Label styleClass="ranking-pos" text="#1" />
@@ -245,7 +258,7 @@
                                     </HBox>
                                 </VBox>
                             </HBox>
-      
+                          
                             <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
                                 <Label styleClass="ranking-pos" text="#3" />
                                 <VBox spacing="5" HBox.hgrow="ALWAYS">
@@ -262,7 +275,7 @@
                                     </HBox>
                                 </VBox>
                             </HBox>
-      
+                          
                             <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
                                 <Label styleClass="ranking-pos" text="#4" />
                                 <VBox spacing="5" HBox.hgrow="ALWAYS">
@@ -279,7 +292,7 @@
                                     </HBox>
                                 </VBox>
                             </HBox>
-      
+                          
                             <HBox alignment="CENTER_LEFT" spacing="15" styleClass="ranking-row">
                                 <Label styleClass="ranking-pos" text="#5" />
                                 <VBox spacing="5" HBox.hgrow="ALWAYS">
@@ -300,16 +313,19 @@
                     </VBox>
                 </HBox>
               
-                <!-- Tablas resumen -->
-              
-                <!-- Actividad reciente -->
                 <HBox spacing="20" VBox.vgrow="ALWAYS">
                     <VBox styleClass="card-base" HBox.hgrow="ALWAYS">
                         <Label styleClass="section-header-small" text="RECENT ACTIVITY LOG" />
                         <VBox fx:id="vboxActivityLog" spacing="15" style="-fx-padding: 10 0 0 0;">
                             <HBox alignment="CENTER_LEFT" spacing="15">
-                                <StackPane styleClass="icon-box, icon-box-cian">
-                                    <Label style="-fx-font-size: 14;" text="💻" />
+                                <StackPane>
+                                    <styleClass>
+                                        <String fx:value="icon-box" />
+                                        <String fx:value="icon-box-cian" />
+                                    </styleClass>
+                                    <children>
+                                        <Label style="-fx-font-size: 14;" text="💻" />
+                                    </children>
                                 </StackPane>
                                 <VBox>
                                     <Label styleClass="log-app-title" text="VS Code" />
@@ -320,8 +336,14 @@
                             </HBox>
                           
                             <HBox alignment="CENTER_LEFT" spacing="15">
-                                <StackPane styleClass="icon-box, icon-box-naranja">
-                                    <Label style="-fx-font-size: 14;" text="🌐" />
+                                <StackPane>
+                                    <styleClass>
+                                        <String fx:value="icon-box" />
+                                        <String fx:value="icon-box-naranja" />
+                                    </styleClass>
+                                    <children>
+                                        <Label style="-fx-font-size: 14;" text="🌐" />
+                                    </children>
                                 </StackPane>
                                 <VBox>
                                     <Label styleClass="log-app-title" text="Twitter" />
@@ -332,8 +354,14 @@
                             </HBox>
                           
                             <HBox alignment="CENTER_LEFT" spacing="15">
-                                <StackPane styleClass="icon-box, icon-box-cian">
-                                    <Label style="-fx-font-size: 14;" text="🎨" />
+                                <StackPane>
+                                    <styleClass>
+                                        <String fx:value="icon-box" />
+                                        <String fx:value="icon-box-cian" />
+                                    </styleClass>
+                                    <children>
+                                        <Label style="-fx-font-size: 14;" text="🎨" />
+                                    </children>
                                 </StackPane>
                                 <VBox>
                                     <Label styleClass="log-app-title" text="Figma" />
@@ -344,8 +372,14 @@
                             </HBox>
                           
                             <HBox alignment="CENTER_LEFT" spacing="15">
-                                <StackPane styleClass="icon-box, icon-box-naranja">
-                                    <Label style="-fx-font-size: 14;" text="🎧" />
+                                <StackPane>
+                                    <styleClass>
+                                        <String fx:value="icon-box" />
+                                        <String fx:value="icon-box-naranja" />
+                                    </styleClass>
+                                    <children>
+                                        <Label style="-fx-font-size: 14;" text="🎧" />
+                                    </children>
                                 </StackPane>
                                 <VBox>
                                     <Label styleClass="log-app-title" text="Discord" />
@@ -357,14 +391,18 @@
                         </VBox>
                     </VBox>
       
-                    <!-- Aplicaciones bloqueadas -->
-                  
                     <VBox HBox.hgrow="ALWAYS" styleClass="card-base">
                         <Label styleClass="section-header-small" text="BLOCKING LOG" />
                         <VBox fx:id="vboxBlockingLog" spacing="15" style="-fx-padding: 10 0 0 0;">
                             <HBox alignment="CENTER_LEFT" spacing="15">
-                                <StackPane styleClass="icon-box, icon-box-naranja">
-                                    <Label style="-fx-font-size: 14;" text="🚫" />
+                                <StackPane>
+                                    <styleClass>
+                                        <String fx:value="icon-box" />
+                                        <String fx:value="icon-box-naranja" />
+                                    </styleClass>
+                                    <children>
+                                        <Label style="-fx-font-size: 14;" text="🚫" />
+                                    </children>
                                 </StackPane>
                                 <VBox>
                                     <Label styleClass="log-app-title" text="Instagram" />
@@ -374,8 +412,14 @@
                                 <Label styleClass="badge-blocked" text="BLOCKED" />
                             </HBox>
                             <HBox alignment="CENTER_LEFT" spacing="15">
-                                <StackPane styleClass="icon-box, icon-box-naranja">
-                                    <Label style="-fx-font-size: 14;" text="🚫" />
+                                <StackPane>
+                                    <styleClass>
+                                        <String fx:value="icon-box" />
+                                        <String fx:value="icon-box-naranja" />
+                                    </styleClass>
+                                    <children>
+                                        <Label style="-fx-font-size: 14;" text="🚫" />
+                                    </children>
                                 </StackPane>
                                 <VBox>
                                     <Label styleClass="log-app-title" text="YouTube" />
@@ -385,8 +429,14 @@
                                 <Label styleClass="badge-blocked" text="BLOCKED" />
                             </HBox>
                             <HBox alignment="CENTER_LEFT" spacing="15">
-                                <StackPane styleClass="icon-box, icon-box-naranja">
-                                    <Label style="-fx-font-size: 14;" text="🚫" />
+                                <StackPane>
+                                    <styleClass>
+                                        <String fx:value="icon-box" />
+                                        <String fx:value="icon-box-naranja" />
+                                    </styleClass>
+                                    <children>
+                                        <Label style="-fx-font-size: 14;" text="🚫" />
+                                    </children>
                                 </StackPane>
                                 <VBox>
                                     <Label styleClass="log-app-title" text="Reddit" />
@@ -402,4 +452,3 @@
         </VBox>
     </content>
 </ScrollPane>
-    

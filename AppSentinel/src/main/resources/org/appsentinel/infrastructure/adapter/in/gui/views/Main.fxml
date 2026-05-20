@@ -3,7 +3,7 @@
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.layout.Region?>
-<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.Button?>
 
@@ -58,8 +58,8 @@
     </left>
 
     <center>
-        <StackPane fx:id="contenedor" style="-fx-background-color: #0d1117;">
-           </StackPane>
+        <AnchorPane fx:id="contenedor" style="-fx-background-color: #0d1117;">
+           </AnchorPane>
     </center>
 
 </BorderPane>

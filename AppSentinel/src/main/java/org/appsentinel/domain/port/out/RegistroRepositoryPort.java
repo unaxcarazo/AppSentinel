@@ -28,5 +28,11 @@ public interface RegistroRepositoryPort {
     List<Registro> obtenerBloqueosHoy(String usuario);
     
     List<Registro> obtenerHistorialCompleto();
+    
+    //////////pruebas
+    List<Registro> buscarTodos();
+    
+    // Añade esta línea para que el servicio pueda revisar la última fila guardada
+    Registro obtenerUltimoRegistroPorUsuario(String usuario);
 
 }

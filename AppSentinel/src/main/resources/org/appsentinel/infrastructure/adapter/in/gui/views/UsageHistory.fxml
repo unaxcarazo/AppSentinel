@@ -9,14 +9,13 @@
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
 
-
 <VBox spacing="25" styleClass="history-upper-container" 
       xmlns="http://javafx.com/javafx/26" 
       xmlns:fx="http://javafx.com/fxml/1" 
       fx:controller="org.appsentinel.infrastructure.gui.controller.UsageHistoryController">
     
     <stylesheets>
-        <URL value="@/org/appsentinel/infrastructure/adapter/in/gui/views/styles/usagehistory.css" />
+        <URL value="@/styles/usagehistory.css" />
     </stylesheets>
 
     <children>
@@ -40,29 +39,28 @@
                         <TextField fx:id="txtSearch" promptText="Search by application name..." styleClass="search-field" HBox.hgrow="ALWAYS" />
                     </children>
                 </HBox>
-                
                 <ComboBox fx:id="comboFilter" prefWidth="200.0" styleClass="cyber-combo" promptText="All Activities" />
             </children>
         </HBox>
         
         <HBox styleClass="table-header" alignment="CENTER_LEFT" spacing="10">
             <children>
-                <Label text="APPLICATION NAME" prefWidth="250.0" />
+                <Label text="APPLICATION NAME" prefWidth="250.0" minWidth="250.0" maxWidth="250.0" styleClass="header-cell" />
                 <Region HBox.hgrow="ALWAYS" />
                 
-                <Label text="START TIME" prefWidth="120.0" alignment="CENTER" />
+                <Label text="START TIME" prefWidth="120.0" minWidth="120.0" maxWidth="120.0" alignment="CENTER" styleClass="header-cell" />
                 <Region HBox.hgrow="ALWAYS" />
                 
-                <Label text="DURATION" prefWidth="120.0" alignment="CENTER" />
+                <Label text="DURATION" prefWidth="120.0" minWidth="120.0" maxWidth="120.0" alignment="CENTER" styleClass="header-cell" />
                 <Region HBox.hgrow="ALWAYS" />
                 
-                <Label text="STATUS" prefWidth="100.0" alignment="CENTER" />
+                <Label text="STATUS" prefWidth="100.0" minWidth="100.0" maxWidth="100.0" alignment="CENTER" styleClass="header-cell" />
             </children>
         </HBox>
         
-        <ScrollPane fitToWidth="true" styleClass="cyber-scroll-pane" VBox.vgrow="ALWAYS">
+        <ScrollPane fitToWidth="true" styleClass="cyber-scroll-pane" VBox.vgrow="ALWAYS" hbarPolicy="NEVER">
             <content>
-                <VBox fx:id="vboxTableRows" spacing="2" styleClass="table-body" />
+                <VBox fx:id="vboxTableRows" spacing="0" styleClass="table-body" />
             </content>
         </ScrollPane>
     </children>

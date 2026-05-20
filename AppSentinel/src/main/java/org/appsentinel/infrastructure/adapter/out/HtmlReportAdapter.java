@@ -1,3 +1,4 @@
+
 package org.appsentinel.infrastructure.adapter.out;
 
 import org.appsentinel.domain.model.Categoria;

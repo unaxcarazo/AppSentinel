@@ -1,232 +1,129 @@
-/* ======================================================================== */
-/* ---------- VARIABLES Y CONTENEDOR PRINCIPAL (CYBER-DARK BASE) ---------- */
-/* ======================================================================== */
-.history-upper-container, .main-scroll, BorderPane, .sidebar {
-    -fx-background-color: #0d1117; /* Fondo negro profundo de base general */
-    -fx-background: #0d1117;        /* Fuerza el fondo en componentes complejos */
-    -fx-padding: 25;
-
-    /* Variables globales de tu paleta Cyberpunk */
-    -color-bg-card: #161b22;       /* Fondo de tarjetas y botones activos */
-    -color-border: #30363d;        /* Bordes sutiles entre secciones */
-    -color-text-main: #ffffff;     /* Texto principal blanco */
-    -color-text-muted: #8b949e;    /* Texto apagado gris secondary */
-    -color-cian: #00d2ff;          /* Neón Cian (Trabajo / General) */
-    -color-naranja: #ff5c00;       /* Neón Naranja (Distracción / Alertas) */
-    -color-verde: #00ffaa;         /* Neón Verde (Permitido / Allowed) */
+/* Forzar variables de color en toda la vista */
+.root {
+    -fx-background-color: #0d1117 !important;
 }
 
-/* ======================================================================== */
-/* ---------- ESTILOS DEL MENÚ LATERAL (MAIN LAYOUT SIDEBAR) ---------- */
-/* ======================================================================== */
-.sidebar {
-    -fx-border-color: -color-border;
-    -fx-border-width: 0 1 0 0; /* Solo una fina línea divisoria a la derecha */
+.history-upper-container {
+    -fx-background-color: #0d1117 !important;
+    -fx-padding: 25px;
 }
 
-/* Logotipo / Título principal EXTREMA */
-.logo {
-    -fx-text-fill: -color-text-main;
-    -fx-font-size: 18px;
-    -fx-font-weight: bold;
-    -fx-font-family: "Arial", sans-serif;
+/* Títulos Superiores */
+.history-icon, .history-main-title {
+    -fx-text-fill: #ffffff !important;
 }
-
-/* ---------- BOTONES DE NAVEGACIÓN GENERALES ---------- */
-.menu-button {
-    -fx-background-color: transparent; /* Fondo invisible por defecto */
-    -fx-text-fill: -color-text-muted;  /* Texto gris apagado */
-    -fx-font-size: 14px;
-    -fx-font-weight: bold;
-    -fx-padding: 12 15 12 15;
-    -fx-background-radius: 6;
-    -fx-cursor: hand;
-    -fx-alignment: center-left;
-}
-
-/* Efecto Hover (Al pasar el ratón por encima) */
-.menu-button:hover {
-    -fx-background-color: rgba(255, 255, 255, 0.05); /* Sutil aclarado gris de fondo */
-    -fx-text-fill: -color-text-main;                  /* Texto se vuelve blanco */
-}
-
-/* Estado Activo / Enfocado (La pestaña actual en la que estás navegando) */
-.menu-button:focused, .menu-button:active {
-    -fx-background-color: -color-bg-card; /* Adopta el fondo gris oscuro de tarjeta */
-    -fx-text-fill: -color-cian;            /* El texto se tiñe de cian neón */
-
-    /* Barra vertical cian a la izquierda del botón activo (Idéntico a tu boceto) */
-    -fx-border-color: -color-cian;
-    -fx-border-width: 0 0 0 3;
-}
-
-/* ---------- BOTÓN DE DEEP FOCUS (NARANJA SEMITRANSPARENTE) ---------- */
-.btnFocus {
-    -fx-background-color: rgba(255, 92, 0, 0.08); /* Fondo naranja muy sutil */
-    -fx-text-fill: -color-naranja;
-    -fx-font-weight: bold;
-    -fx-padding: 14;
-    -fx-border-color: -color-naranja;
-    -fx-border-width: 1;
-    -fx-border-radius: 6;
-    -fx-background-radius: 6;
-    -fx-cursor: hand;
-    -fx-alignment: center;
-}
-
-.btnFocus:hover {
-    -fx-background-color: rgba(255, 92, 0, 0.15); /* Naranja más vivo al pasar el ratón */
-}
-
-/* ======================================================================== */
-/* ---------- ESTILOS DE LA VISTA DE HISTORIAL (USAGE HISTORY) ---------- */
-/* ======================================================================== */
-.history-icon {
-    -fx-text-fill: -color-cian;
-    -fx-font-size: 22px;
-}
-
-.history-main-title {
-    -fx-text-fill: -color-text-main;
-    -fx-font-size: 26px;
-    -fx-font-weight: bold;
-    -fx-letter-spacing: 1px;
-}
-
 .history-subtitle {
-    -fx-text-fill: -color-text-muted;
-    -fx-font-size: 13px;
-    -fx-font-family: "Courier New", monospace;
+    -fx-text-fill: #8b949e !important;
 }
 
-/* ---------- CAJA DE BÚSQUEDA (SEARCH BOX) ---------- */
-.search-box {
-    -fx-background-color: -color-bg-card;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-background-radius: 8;
-    -fx-pref-height: 42;
-    -fx-max-height: 42;
-    -fx-padding: 0 10 0 10;
-}
-
-.search-icon {
-    -fx-text-fill: -color-text-muted;
-    -fx-font-size: 14px;
-    -fx-padding: 0 10 0 5;
-}
-
-.search-field {
-    -fx-background-color: transparent;
-    -fx-text-fill: -color-text-main;
-    -fx-prompt-text-fill: #565d66;
-    -fx-font-size: 14px;
-}
-
-/* ---------- DESPLEGABLE (COMBOBOX CYBER) ---------- */
-.cyber-combo {
-    -fx-background-color: -color-bg-card;
-    -fx-border-color: -color-border;
-    -fx-border-radius: 8;
-    -fx-background-radius: 8;
-    -fx-pref-height: 42;
-    -fx-max-height: 42;
-    -fx-font-size: 14px;
-}
-
-.cyber-combo .label {
-    -fx-text-fill: -color-text-main;
-}
-
-.cyber-combo .arrow-button {
-    -fx-background-color: transparent;
-}
-
-.cyber-combo .arrow {
-    -fx-background-color: -color-text-muted;
-}
-
-/* ----------- CABECERA DE LA TABLA ----------- */
+/* Cabecera Estilizada (Encabezados claros) */
 .table-header {
-    -fx-padding: 15 20 5 20;
+    -fx-background-color: #161b22 !important;
+    -fx-border-color: #30363d !important;
+    -fx-border-width: 0 0 2px 0 !important;
+    -fx-padding: 12px 15px;
+}
+.table-header .label, .table-header .header-cell {
+    -fx-text-fill: #ff7b72 !important; /* Coral claro y visible */
+    -fx-font-weight: bold !important;
 }
 
-.table-header .label {
-    -fx-text-fill: -color-text-muted;
-    -fx-font-size: 11px;
-    -fx-font-weight: bold;
-    -fx-letter-spacing: 0.5px;
+/* Forzar el ScrollPane a ser transparente y oscuro */
+.cyber-scroll-pane,
+.cyber-scroll-pane .viewport,
+.cyber-scroll-pane .content {
+    -fx-background-color: #0d1117 !important;
+    -fx-viewport-background-color: #0d1117 !important;
+    -fx-border-color: transparent !important;
 }
 
-/* ----------- FILAS DINÁMICAS GENERADAS EN HISTORIAL ----------- */
-.table-row {
-    -fx-background-color: -color-bg-card;
-    -fx-border-color: -color-border;
-    -fx-border-width: 0 0 1 0; /* Línea divisoria inferior sutil */
-    -fx-padding: 14 20 14 20;
-    -fx-alignment: center-left;
+.table-body {
+    -fx-background-color: #0d1117 !important;
 }
 
-.app-name {
-    -fx-text-fill: -color-text-main;
-    -fx-font-size: 14px;
-    -fx-font-weight: bold;
+/* Filas de la tabla (Adiós al fondo blanco) */
+.table-row-custom {
+    -fx-background-color: #161b22 !important;
+    -fx-border-color: #21262d !important;
+    -fx-border-width: 0 0 1px 0 !important;
+    -fx-padding: 14px 15px;
+}
+.table-row-custom:hover {
+    -fx-background-color: #21262d !important;
 }
 
-.table-cell-text {
-    -fx-text-fill: -color-text-main;
-    -fx-font-size: 13px;
-    -fx-font-family: "Consolas", "Courier New", monospace; /* Fuente de reloj digital */
+/* Textos internos claros */
+.table-row-custom .label,
+.table-row-custom .app-name-label,
+.table-row-custom .table-cell-custom {
+    -fx-text-fill: #ffffff !important; /* Forzar todas las letras a blanco */
 }
 
-/* ----------- MINI BADGES DE CATEGORÍA INTERNOS ----------- */
-.badge-cat-work {
-    -fx-text-fill: -color-cian;
-    -fx-font-size: 9px;
-    -fx-font-weight: bold;
-    -fx-background-color: rgba(0, 210, 255, 0.12);
-    -fx-padding: 2 6 2 6;
-    -fx-background-radius: 4;
+/* Badges y Estados */
+.badge-work {
+    -fx-background-color: rgba(56, 139, 253, 0.25) !important;
+    -fx-text-fill: #79c0ff !important;
+}
+.badge-distraction {
+    -fx-background-color: rgba(240, 139, 90, 0.25) !important;
+    -fx-text-fill: #ffa657 !important;
+}
+.status-allowed {
+    -fx-text-fill: #3fb950 !important;
+}
+.status-blocked {
+    -fx-text-fill: #ff6b6b !important;
 }
 
-.badge-cat-distraction {
-    -fx-text-fill: -color-naranja;
-    -fx-font-size: 9px;
-    -fx-font-weight: bold;
-    -fx-background-color: rgba(255, 92, 0, 0.12);
-    -fx-padding: 2 6 2 6;
-    -fx-background-radius: 4;
+/* Forzar el fondo oscuro del cuerpo de la tabla */
+.table-body {
+    -fx-background-color: #0d1117 !important;
 }
 
-/* ----------- BADGES DE ESTADO EXTREMO DERECHO ----------- */
-.badge-status-allowed {
-    -fx-text-fill: -color-verde;
-    -fx-font-size: 11px;
-    -fx-font-weight: bold;
-    -fx-border-color: -color-verde;
-    -fx-border-width: 1;
-    -fx-border-radius: 4;
-    -fx-padding: 4 12 4 12;
-    -fx-background-color: rgba(0, 255, 170, 0.05);
+/* Forzar el estilo de las filas individuales */
+.table-row-custom {
+    -fx-background-color: #161b22 !important;
+    -fx-border-color: #21262d !important;
+    -fx-border-width: 0 0 1px 0 !important;
+    -fx-padding: 14px 15px !important;
 }
 
-/* --------- Scroll por si se llena de datos la tabla --------- */ 
-.badge-status-blocked {
-    -fx-text-fill: #ff3333; /* Rojo neón cyber */
-    -fx-font-size: 11px;
-    -fx-font-weight: bold;
-    -fx-border-color: #ff3333;
-    -fx-border-width: 1;
-    -fx-border-radius: 4;
-    -fx-padding: 4 12 4 12;
-    -fx-background-color: rgba(255, 51, 51, 0.05);
+.table-row-custom:hover {
+    -fx-background-color: #21262d !important;
 }
 
-.cyber-scroll-pane {
-    -fx-background-color: transparent;
-    -fx-background-insets: 0;
-    -fx-padding: 0;
+/* Colores de las fuentes dentro de las filas */
+.table-row-custom .app-name-label {
+    -fx-text-fill: #ffffff !important;
+    -fx-font-size: 14px !important;
+    -fx-font-weight: bold !important;
 }
-.cyber-scroll-pane .viewport {
-    -fx-background-color: transparent;
+
+.table-row-custom .table-cell-custom {
+    -fx-text-fill: #e6edf3 !important;
+    -fx-font-size: 13px !important;
+}
+
+/* ESTADOS DE BLOQUEO (Forzamos los colores neón sobre cualquier estilo base) */
+.table-row-custom .status-allowed {
+    -fx-text-fill: #3fb950 !important; /* Verde brillante */
+    -fx-font-weight: bold !important;
+    -fx-font-size: 13px !important;
+}
+
+.table-row-custom .status-blocked {
+    -fx-text-fill: #ff6b6b !important; /* Rojo brillante */
+    -fx-font-weight: bold !important;
+    -fx-font-size: 13px !important;
+}
+
+/* Badges de categorías */
+.table-row-custom .badge-work {
+    -fx-background-color: rgba(56, 139, 253, 0.25) !important;
+    -fx-text-fill: #79c0ff !important;
+}
+
+.table-row-custom .badge-distraction {
+    -fx-background-color: rgba(240, 139, 90, 0.25) !important;
+    -fx-text-fill: #ffa657 !important;
 }

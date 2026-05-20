@@ -1,5 +1,6 @@
 package org.appsentinel.infrastructure.config;
 
+import org.appsentinel.domain.port.in.PerformanceUseCase;
 import org.appsentinel.domain.port.out.CategoriaRepositoryPort;
 import org.appsentinel.domain.port.out.KillerPort;
 import org.appsentinel.domain.port.out.NotificacionPort;
@@ -21,5 +22,6 @@ public record AppContext(
     RegistroRepositoryPort repositorio,
     CategoriaRepositoryPort categorias,
     NotificacionPort notificacion,
-    KillerPort killer
+    KillerPort killer,
+    PerformanceUseCase performance
 ) {}

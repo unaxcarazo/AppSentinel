@@ -1,7 +1,7 @@
 package org.appsentinel.infrastructure.bootstrap;
 
 import org.appsentinel.domain.port.out.CategoriaRepositoryPort;
-import org.appsentinel.domain.port.out.FocoActivoPort;
+import org.appsentinel.domain.port.in.FocoActivoPort;
 import org.appsentinel.domain.port.out.KillerPort;
 import org.appsentinel.domain.port.out.NotificacionPort;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;

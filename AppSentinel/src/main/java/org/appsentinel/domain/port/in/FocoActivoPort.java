@@ -1,11 +1,9 @@
 // ============================================
 // org.appsentinel.domain.port.out.FocoActivoPort
 // ============================================
-package org.appsentinel.domain.port.out;
+package org.appsentinel.domain.port.in;
 
-/**
- * Puerto de SALIDA para consultar el estado del foco activo actual.
- *
+/*
  * El dominio (TimeTrackingService) implementa este puerto para exponer
  * hacia la capa de presentación la actividad que tiene el foco del usuario
  * en este momento, sin revelar tipos internos ni estructuras de datos

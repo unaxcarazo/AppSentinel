@@ -13,16 +13,14 @@ import java.util.logging.Logger;
 /**
  * PostgreSQLRepositoryAdapter: Adaptador de SALIDA para la persistencia del historial.
  * 
- * Registra y extrae las métricas de consumo de tiempo acumuladas en los hilos del dominio.
- * 
- * FIX: Trunca campos de texto que excedan los límites de la BD para evitar
- * PSQLException: "el valor es demasiado largo para el tipo character varying(N)".
+ * FIX BATCH: Implementa guardarBatch() con PreparedStatement.addBatch() + executeBatch()
+ * en transacción atómica (setAutoCommit(false) + commit()).
+ * Un batch de 50 registros = 1 round-trip de red en lugar de 50.
  */
 public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
     private static final Logger LOGGER = Logger.getLogger(PostgreSQLRepositoryAdapter.class.getName());
 
-    // Límites de columnas en PostgreSQL (ajustar según el DDL real)
     private static final int LIMITE_NOMBRE_ACTIVIDAD = 255;
     private static final int LIMITE_CATEGORIA = 100;
     private static final int LIMITE_DETALLE = 500;
@@ -41,13 +39,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
-            stmt.setString(1, truncar(registro.getUsuarioSistema(), LIMITE_USUARIO));
-            stmt.setString(2, truncar(registro.getNombreActividad(), LIMITE_NOMBRE_ACTIVIDAD));
-            stmt.setString(3, truncar(registro.getCategoria(), LIMITE_CATEGORIA));
-            stmt.setString(4, truncar(registro.getDetalle(), LIMITE_DETALLE));
-            stmt.setLong(5, registro.getDuracionSeg());
-            stmt.setTimestamp(6, Timestamp.valueOf(registro.getFechaRegistro()));
-
+            setParams(stmt, registro);
             stmt.executeUpdate();
 
             try (ResultSet rs = stmt.getGeneratedKeys()) {
@@ -56,12 +48,79 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
                 }
             }
 
-            LOGGER.log(Level.INFO, "[PERSISTENCIA] Registro guardado en PostgreSQL: {0} ({1}s)", 
+            LOGGER.log(Level.FINE, "[PERSISTENCIA] Registro guardado: {0} ({1}s)", 
                 new Object[]{truncar(registro.getNombreActividad(), 50), registro.getDuracionSeg()});
 
         } catch (SQLException e) {
-            LOGGER.log(Level.SEVERE, "[ERROR] Fallo crítico al insertar registro de actividad en la base de datos", e);
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al insertar registro de actividad", e);
         }
+    }
+
+    /**
+     * Batch insert transaccional con executeBatch().
+     * Usa una sola conexión, una sola PreparedStatement, un solo round-trip de red.
+     * Si falla, hace rollback para mantener consistencia.
+     */
+    @Override
+    public void guardarBatch(List<Registro> registros) {
+        if (registros == null || registros.isEmpty()) return;
+
+        String sql = """
+            INSERT INTO registros_actividad 
+            (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """;
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                for (Registro reg : registros) {
+                    if (reg == null) continue;
+                    setParams(stmt, reg);
+                    stmt.addBatch();
+                }
+
+                int[] resultados = stmt.executeBatch();
+                conn.commit();
+
+                int exitosos = 0;
+                for (int r : resultados) {
+                    if (r >= 0 || r == Statement.SUCCESS_NO_INFO) exitosos++;
+                }
+
+                LOGGER.log(Level.INFO, "[PERSISTENCIA] Batch ejecutado: {0}/{1} registros insertados",
+                    new Object[]{exitosos, registros.size()});
+            }
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo en batch insert de " + registros.size() + " registros. Haciendo rollback...", e);
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException ex) {
+                    LOGGER.log(Level.SEVERE, "[ERROR] Rollback fallido", ex);
+                }
+            }
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException e) {
+                    LOGGER.log(Level.WARNING, "[ERROR] Fallo restaurando auto-commit", e);
+                }
+            }
+        }
+    }
+
+    private void setParams(PreparedStatement stmt, Registro reg) throws SQLException {
+        stmt.setString(1, truncar(reg.getUsuarioSistema(), LIMITE_USUARIO));
+        stmt.setString(2, truncar(reg.getNombreActividad(), LIMITE_NOMBRE_ACTIVIDAD));
+        stmt.setString(3, truncar(reg.getCategoria(), LIMITE_CATEGORIA));
+        stmt.setString(4, truncar(reg.getDetalle(), LIMITE_DETALLE));
+        stmt.setLong(5, reg.getDuracionSeg());
+        stmt.setTimestamp(6, Timestamp.valueOf(reg.getFechaRegistro()));
     }
 
     @Override
@@ -121,9 +180,6 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         return registros;
     }
 
-    /**
-     * Mapeo tradicional mediante instanciación estándar y setters.
-     */
     private Registro mapearRegistro(ResultSet rs) throws SQLException {
         Registro reg = new Registro();
         reg.setId(rs.getLong("id"));
@@ -136,10 +192,6 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         return reg;
     }
 
-    /**
-     * Trunca un string al máximo permitido, evitando PSQLException por overflow.
-     * Si el valor es null, retorna null.
-     */
     private String truncar(String valor, int maximo) {
         if (valor == null) return null;
         return valor.length() > maximo ? valor.substring(0, maximo) : valor;

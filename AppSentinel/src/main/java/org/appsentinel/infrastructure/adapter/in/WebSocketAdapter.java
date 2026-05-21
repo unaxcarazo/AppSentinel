@@ -19,6 +19,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * WebSocketAdapter: Adaptador de ENTRADA para eventos del navegador.
+ *
+ * FIX DEDUPLICACION: Clave compuesta (tabId + url + titulo) en lugar de solo URL.
+ * - Permite SPAs que cambian titulo sin cambiar URL (Gmail, Discord, etc.)
+ * - Bloquea heartbeats duplicados y reconnects con datos identicos
+ * - Limpieza completa en onClose/onError para evitar fugas de memoria
+ */
 public class WebSocketAdapter extends WebSocketServer implements BrowserCommandPort {
 
     private static final Logger LOGGER = Logger.getLogger(WebSocketAdapter.class.getName());
@@ -36,7 +44,8 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
     private static final int TITULO_MAX_LEN = 500;
 
     private final Map<WebSocket, AtomicInteger> mensajesPorSegundo = new ConcurrentHashMap<>();
-    private final Map<WebSocket, String> ultimaUrlPorCliente = new ConcurrentHashMap<>();
+    // FIX: Clave compuesta para deduplicacion inteligente (SPA-friendly)
+    private final Map<WebSocket, String> ultimaClavePorCliente = new ConcurrentHashMap<>();
 
     private final ScheduledExecutorService rateLimitReset = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "WS-RateLimit-Reset");
@@ -62,15 +71,15 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
     public void onOpen(WebSocket conn, ClientHandshake handshake) {
         String origin = handshake.getFieldValue("Origin");
         if (origin != null && origin.length() > ORIGIN_MAX_LEN) {
-            conn.close(1008, "Origin inválido");
+            conn.close(1008, "Origin invalido");
             return;
         }
         if (origin == null || !esExtensionNavegador(origin)) {
-            LOGGER.log(Level.WARNING, "[WS] Conexión rechazada — origin no autorizado: {0}", origin);
+            LOGGER.log(Level.WARNING, "[WS] Conexion rechazada - origin no autorizado: {0}", origin);
             conn.close(1008, "Origin no autorizado");
             return;
         }
-        LOGGER.log(Level.INFO, "[WS] Extensión conectada desde {0}", conn.getRemoteSocketAddress());
+        LOGGER.log(Level.INFO, "[WS] Extension conectada desde {0}", conn.getRemoteSocketAddress());
     }
 
     private boolean esExtensionNavegador(String origin) {
@@ -91,15 +100,18 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
             String url = json.has("url") ? json.get("url").asText() : null;
             String titulo = json.has("titulo") ? json.get("titulo").asText() : null;
 
-            // FIX: Normalizar tabId que puede venir como string con separadores de miles
             int tabId = extraerTabId(json);
 
             if (url == null || url.isBlank() || url.length() > URL_MAX_LEN) return;
             if (!url.matches("https?://[\\w\\-\\.]+.*")) return;
 
-            String ultimaUrl = ultimaUrlPorCliente.get(conn);
-            if (url.equals(ultimaUrl)) return;
-            ultimaUrlPorCliente.put(conn, url);
+            // FIX DEDUPLICACION: Clave compuesta (tabId + url + titulo)
+            // Permite SPAs que cambian titulo sin cambiar URL
+            // Bloquea heartbeats duplicados con datos identicos
+            String clave = tabId + "|" + url + "|" + (titulo != null ? titulo : "");
+            String ultimaClave = ultimaClavePorCliente.get(conn);
+            if (clave.equals(ultimaClave)) return;
+            ultimaClavePorCliente.put(conn, clave);
 
             if (titulo != null) {
                 titulo = titulo.replaceAll("[\\p{Cntrl}]", "").trim();
@@ -113,11 +125,6 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
         }
     }
 
-    /**
-     * Extrae y normaliza el tabId del JSON.
-     * Maneja: entero nativo, string numérico, string con separadores de miles (español).
-     * Retorna -1 si no es parseable.
-     */
     private int extraerTabId(JsonNode json) {
         if (!json.has("tabId")) return -1;
 
@@ -129,13 +136,11 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
 
         if (tabIdNode.isTextual()) {
             String raw = tabIdNode.asText().trim();
-            // Eliminar separadores de miles: "329.598.133" → "329598133"
-            // o "1,234,567" → "1234567"
             String limpio = raw.replace(".", "").replace(",", "").replace(" ", "");
             try {
                 return Integer.parseInt(limpio);
             } catch (NumberFormatException e) {
-                LOGGER.log(Level.WARNING, "[WS] tabId no numérico después de limpieza: '{0}' (raw: '{1}')", 
+                LOGGER.log(Level.WARNING, "[WS] tabId no numerico despues de limpieza: '{0}' (raw: '{1}')",
                     new Object[]{limpio, raw});
                 return -1;
             }
@@ -148,8 +153,8 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
         mensajesPorSegundo.remove(conn);
-        ultimaUrlPorCliente.remove(conn);
-        LOGGER.log(Level.INFO, "[WS] Conexión cerrada con código {0}. Motivo: {1}", new Object[]{code, reason});
+        ultimaClavePorCliente.remove(conn);  // FIX: Limpieza completa
+        LOGGER.log(Level.INFO, "[WS] Conexion cerrada con codigo {0}. Motivo: {1}", new Object[]{code, reason});
     }
 
     @Override
@@ -157,7 +162,8 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
         LOGGER.log(Level.SEVERE, "[WS] Error interno en canal", e);
         if (conn != null) {
             mensajesPorSegundo.remove(conn);
-            ultimaUrlPorCliente.remove(conn);
+            ultimaClavePorCliente.remove(conn);  // FIX: Limpieza completa
+            conn.close(1011, "Error interno de servidor");
         }
     }
 

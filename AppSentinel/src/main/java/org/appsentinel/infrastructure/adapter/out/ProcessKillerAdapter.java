@@ -12,35 +12,65 @@ import java.util.logging.Logger;
 /**
  * ProcessKillerAdapter: Adaptador de SALIDA para cierre quirúrgico de procesos.
  *
- * FIX A.1 (Anti-PID-Recycling):
+ * FIX WIN-01: Protección por PID propio y padre IDE, no por nombre genérico "java"/"javaw".
+ * - Elimina "java", "javaw", "idea", "netbeans" de la lista de protegidos.
+ * - Protege SOLO: procesos críticos del SO + AppSentinel mismo + IDE que lanzó la JVM.
+ * - Permite cerrar apps Java legítimas clasificadas como distracción (Minecraft, etc.).
+ *
+ * PROTECCIÓN A.1 — Anti-PID-Recycling:
  * Windows reutiliza PIDs agresivamente. Entre el escaneo (10s) y la orden de
  * bloqueo (que puede demorar minutos en modo estricto con gracia), otro proceso
  * legítimo podría heredar el PID de la distracción.
- *
- * PROTECCIÓN IMPLEMENTADA:
- * 1. Validación de nombre: ph.info().command() vs nombre reportado (existente).
- * 2. Validación de startInstant: el escáner captura el Instant de inicio del
- *    proceso en el momento de detección. Al matar, se compara contra el
- *    startInstant ACTUAL del PID. Si difieren, el PID fue reciclado → abortar.
- *
- * La comparación es matemática (Instant.equals), no por milisegundos.
  */
 public class ProcessKillerAdapter implements KillerPort {
 
     private static final Logger LOGGER = Logger.getLogger(ProcessKillerAdapter.class.getName());
 
-    private static final Set<String> PROCESOS_PROTEGIDOS = Set.of(
+    // FIX WIN-01: Solo procesos críticos del SO. "java", "javaw", "idea", "netbeans" ELIMINADOS.
+    private static final Set<String> PROCESOS_SISTEMA_CRITICOS = Set.of(
         "csrss", "smss", "lsass", "services", "svchost", "winlogon",
         "wininit", "system", "registry", "memory compression",
-        "explorer", "taskmgr", "java", "javaw", "idea", "netbeans"
+        "explorer", "taskmgr"
     );
 
     private static final long GRACEFUL_TIMEOUT_SECONDS = 5;
 
     private final BrowserCommandPort browserCommand;
+    private final long pidPropio;
+    private final Optional<Long> pidPadreIde;
 
     public ProcessKillerAdapter(BrowserCommandPort browserCommand) {
         this.browserCommand = browserCommand;
+        this.pidPropio = ProcessHandle.current().pid();
+        this.pidPadreIde = resolverPidPadreIde();
+    }
+
+    /**
+     * FIX WIN-01: Resuelve si AppSentinel fue lanzado desde un IDE.
+     * Protege el IDE para que no se cierre accidentalmente al matar una distracción.
+     */
+    private Optional<Long> resolverPidPadreIde() {
+        Set<String> ides = Set.of("idea", "studio", "code", "netbeans", "eclipse");
+        Optional<ProcessHandle> actual = ProcessHandle.current().parent();
+
+        while (actual.isPresent()) {
+            ProcessHandle ph = actual.get();
+            // Evitamos fallos si el comando no es accesible por permisos del SO
+            String nombre = ph.info().command()
+                .map(this::extraerNombre)
+                .orElse("desconocido");
+
+            if (ides.contains(nombre)) {
+                LOGGER.log(Level.INFO, "[KILL] IDE detectado en cadena de lanzamiento: {0} (PID: {1})",
+                    new Object[]{nombre, ph.pid()});
+                return Optional.of(ph.pid());
+            }
+
+            if (ph.pid() <= 0) break;
+            actual = ph.parent();
+        }
+
+        return Optional.empty();
     }
 
     @Override
@@ -66,45 +96,46 @@ public class ProcessKillerAdapter implements KillerPort {
 
         // 2. VALIDACIÓN DE SEGURIDAD: nombre REAL del handle
         String nombreReal = ph.info().command().map(this::extraerNombre).orElse("desconocido");
-        if (PROCESOS_PROTEGIDOS.contains(nombreReal)) {
-            LOGGER.log(Level.SEVERE, "[KILL] BLOQUEADO intento sobre proceso protegido: PID {0} ({1})",
+
+        // 2a. Procesos del sistema críticos (explorer, csrss, etc.)
+        if (PROCESOS_SISTEMA_CRITICOS.contains(nombreReal)) {
+            LOGGER.log(Level.SEVERE, "[KILL] BLOQUEADO intento sobre proceso de sistema: PID {0} ({1})",
                 new Object[]{pid, nombreReal});
             return false;
         }
 
-        // 3. VALIDACIÓN A.1 — Anti-PID-Recycling:
-        //    Comparar startInstant del escáner vs startInstant actual del PID.
-        //    Si difieren, el PID fue reciclado por otro proceso.
+        // FIX WIN-01: 2b. Protección por PID propio y padre IDE
+        long pidObjetivo = ph.pid();
+        if (pidObjetivo == pidPropio) {
+            LOGGER.log(Level.SEVERE, "[KILL] BLOQUEADO intento de auto-suicidio (PID propio: {0})", pidPropio);
+            return false;
+        }
+        if (pidPadreIde.isPresent() && pidObjetivo == pidPadreIde.get()) {
+            LOGGER.log(Level.SEVERE, "[KILL] BLOQUEADO intento sobre IDE padre: PID {0}", pidPadreIde.get());
+            return false;
+        }
+
+        // 3. VALIDACIÓN A.1 — Anti-PID-Recycling
         Optional<Instant> startInstantActualOpt = ph.info().startInstant();
         if (startInstantEscaneado != null && startInstantActualOpt.isPresent()) {
             Instant startInstantActual = startInstantActualOpt.get();
             if (!startInstantEscaneado.equals(startInstantActual)) {
                 LOGGER.log(Level.SEVERE,
                     "[KILL] ABORTADO — PID {0} fue RECICLADO. " +
-                    "Escaneado: {1} (start={2}), Actual: {3} (start={4}). " +
-                    "Otro proceso heredó este PID.",
+                    "Escaneado: {1} (start={2}), Actual: {3} (start={4}).",
                     new Object[]{pid, nombreProceso, startInstantEscaneado, nombreReal, startInstantActual});
                 return false;
             }
         } else if (startInstantEscaneado == null) {
             LOGGER.log(Level.WARNING,
                 "[KILL] startInstant del escáner no disponible para PID {0}. " +
-                "Continuando con validación de nombre únicamente (riesgo de reciclaje).",
-                pid);
-        }
-
-        // 4. LOG DE COHERENCIA (discrepancia nombre/pid sin reciclaje)
-        String busqueda = normalizarNombre(nombreProceso);
-        if (!busqueda.equals(nombreReal)) {
-            LOGGER.log(Level.INFO,
-                "[KILL] Discrepancia nombre/pid: reportado={0}, real={1}. Mataremos por PID.",
-                new Object[]{nombreProceso, nombreReal});
+                "Continuando con validación por nombre únicamente.", pid);
         }
 
         LOGGER.log(Level.INFO, "[KILL] Ejecutando cierre quirúrgico sobre PID {0} ({1})",
             new Object[]{pid, nombreReal});
 
-        // 5. DESTRUCCIÓN FÍSICA
+        // 4. DESTRUCCIÓN FÍSICA
         return destruirProceso(ph);
     }
 
@@ -158,13 +189,10 @@ public class ProcessKillerAdapter implements KillerPort {
         String limpia = ruta.replace("\"", "").trim();
         String sep = limpia.contains("\\") ? "\\" : "/";
         String[] partes = limpia.split(sep);
+        if (partes.length == 0) return "desconocido";
+        
         String nombre = partes[partes.length - 1].toLowerCase();
         int punto = nombre.lastIndexOf('.');
         return punto > 0 ? nombre.substring(0, punto) : nombre;
-    }
-
-    private String normalizarNombre(String nombre) {
-        if (nombre == null || nombre.isBlank()) return "";
-        return nombre.toLowerCase().replace(".exe", "").trim();
     }
 }

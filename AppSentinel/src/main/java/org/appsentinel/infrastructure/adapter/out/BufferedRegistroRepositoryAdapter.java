@@ -121,6 +121,32 @@ public class BufferedRegistroRepositoryAdapter implements RegistroRepositoryPort
     public Map<String, ResumenActividad> obtenerResumenPorApp(String usuario) {
         return delegate.obtenerResumenPorApp(usuario);
     }
+    
+    @Override
+    public List<Registro> obtenerHistorialCompleto() {
+        return delegate.obtenerHistorialCompleto();
+    } 
+    
+    @Override
+    public List<Registro> obtenerBloqueosHoy(String usuario) {
+        return delegate.obtenerBloqueosHoy(usuario);
+    } 
+    
+    @Override
+    public List<Registro> obtenerActividadHoy(String usuario){
+        return delegate.obtenerActividadHoy(usuario);
+    }
+    
+    @Override
+    public List<Registro> obtenerTopTrabajo(String usuario, int limite){
+        return delegate.obtenerTopTrabajo(usuario, limite);
+    }
+    
+    @Override
+    public List<Registro> obtenerTopDistracciones(String usuario, int limite){
+        return delegate.obtenerTopDistracciones(usuario, limite);
+    }
+   
 
     /**
      * FIX 1.3: Shutdown graceful con doble garantía de flush.

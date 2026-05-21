@@ -10,7 +10,10 @@
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
 
-<AnchorPane fx:id="rootPane" prefHeight="500.0" prefWidth="700.0" styleClass="mainFxmlClass" xmlns="http://javafx.com/javafx/17" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.appsentinel.infrastructure.gui.controller.AppBlockerController">
+<AnchorPane fx:id="rootPane" prefHeight="500.0" prefWidth="700.0" 
+            styleClass="mainFxmlClass" xmlns="http://javafx.com/javafx/17" 
+            xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="org.appsentinel.infrastructure.gui.controller.AppBlockerController">
     <children>
         <VBox spacing="10.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
             <padding>

@@ -59,7 +59,7 @@ public class MainController {
                 "El contexto de la aplicación (AppContext) no puede ser nulo.");
         }
         this.ctx = ctx;
-        Platform.runLater(() -> cargarVista("dashboard"));
+        Platform.runLater(() -> cargarVista("Dashboard"));
     }
 
     // =========================================================================

@@ -6,6 +6,10 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.List;
 import java.util.ResourceBundle;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
 import javafx.scene.chart.BarChart;
@@ -32,6 +36,10 @@ public class DashboardController implements Initializable, Controllable {
 
     private static final double LIMITE_TRABAJO_SEG = 5 * 3600; // 5 horas en segundos
     private static final double LIMITE_DISTRACCION_SEG = 1 * 3600; // 1 hora en segundos
+    private volatile long ultimaActualizacionUi = 0;
+    private static final long MIN_MS_ENTRE_ACTUALIZACIONES = 2000; // 2 segundos
+
+    private ScheduledExecutorService uiScheduler;
 
     @FXML
     private Region scoreFill;
@@ -79,6 +87,17 @@ public class DashboardController implements Initializable, Controllable {
         } else {
             System.err.println("❌ ERROR: 'rootPane' es null. El fx:id no está bien puesto en el FXML.");
         }
+
+        // Scheduler de UI: refresca cada 5s, no en cada evento
+        this.uiScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread t = new Thread(runnable);
+            t.setDaemon(true);
+            return t;
+        });
+
+        this.uiScheduler.scheduleAtFixedRate(() -> {
+            Platform.runLater(this::actualizarVistaSegura);
+        }, 5, 5, TimeUnit.SECONDS);
     }
 
     /**
@@ -455,4 +474,43 @@ public class DashboardController implements Initializable, Controllable {
         double maxHeight = 160.0;
         scoreFill.setPrefHeight(maxHeight * sanitizedScore);
     }
+    
+    // Diego
+    private void actualizarVistaSegura() {
+        long ahora = System.currentTimeMillis();
+        if (ahora - ultimaActualizacionUi < MIN_MS_ENTRE_ACTUALIZACIONES) {
+            return;
+        }
+        ultimaActualizacionUi = ahora;
+
+        Platform.runLater(() -> {
+            recargarDatosDesdeBd();
+        });
+    }
+
+    private void recargarDatosDesdeBd() {
+        // Aquí pides los datos a tus puertos (repositorio o tracking)
+        // Ejemplo: var datos = ctx.repositorio().obtenerUltimosRegistros();
+        System.out.println("Cargando información optimizada desde la base de datos...");
+    }
+
+    public void detenerPlanificador() {
+        if (uiScheduler != null && !uiScheduler.isShutdown()) {
+            uiScheduler.shutdown();
+        }
+    }
+
 }
+/*private void actualizarVistaSegura() {
+        long ahora = System.currentTimeMillis();
+        if (ahora - ultimaActualizacionUi < MIN_MS_ENTRE_ACTUALIZACIONES) {
+            return; // Ignorar, la UI se actualizó hace menos de 2s
+        }
+        ultimaActualizacionUi = ahora;
+
+        Platform.runLater(() -> {
+            // Actualizar tabla, gráficos, etc.
+            recargarDatosDesdeBd();
+        });
+    }
+ */

@@ -35,14 +35,18 @@ import java.util.logging.Logger;
  * - Si el buffer se llena (capacidad configurable), los registros excedentes se
  *   descartan con log de advertencia. Esto evita OutOfMemoryError bajo estrés.
  *
- * FIX 1.1: PersistenceWorker implementado como clase Runnable interna.
- * - Hilo daemon dedicado que consume la cola via take() bloqueante.
+ * FIX 1.1: PersistenceWorker implementado como clase Runnable interna estática.
+ * - Hilo daemon dedicado que consume la cola via poll() con timeout.
  * - Flush por batch size (50), timeout (5s), o shutdown.
- * - No es un record: requiere estado mutable (running flag) y un Thread.
+ * - Static inner class previene fugas de memoria (no mantiene referencia a outer).
  *
- * FIX 1.3: Shutdown graceful con poll manual de residuales.
+ * FIX PERSIST-02: Timeout dinámico en poll() para shutdown rápido.
+ * - Timeout normal: 5000ms (espera batch completo o tiempo máximo)
+ * - Timeout en shutdown: 100ms (salida inmediata, sin esperar 5s bloqueado)
+ *
+ * FIX 1.3: Shutdown graceful con doble garantía de flush.
  * - El worker hace join(5s) y flush de su batch interno.
- * - Después, el adaptador principal hace poll() manual de la cola restante
+ * - Después, el adaptador principal hace drainTo() manual de la cola restante
  *   y flushea directamente al delegate por si el worker murió antes de vaciar todo.
  * - Garantiza zero data loss en apagado normal.
  */
@@ -156,7 +160,7 @@ public class BufferedRegistroRepositoryAdapter implements RegistroRepositoryPort
     }
 
     // =========================================================================
-    // FIX 1.1: PersistenceWorker — Clase Runnable interna
+    // FIX 1.1: PersistenceWorker — Clase Runnable interna estática
     // =========================================================================
 
     /**
@@ -173,6 +177,10 @@ public class BufferedRegistroRepositoryAdapter implements RegistroRepositoryPort
      * - La cola (LinkedBlockingQueue) es thread-safe por diseño.
      * - La lista de acumulación (batch) es local al hilo del worker.
      * - El flag 'running' es volatile para visibilidad cross-thread.
+     *
+     * FIX PERSIST-02: Timeout dinámico en poll() para shutdown rápido.
+     * - pollTimeoutMs cambia de 5000ms a 100ms cuando se solicita shutdown.
+     * - Evita que el worker se quede bloqueado 5s esperando en poll().
      */
     private static class PersistenceWorker implements Runnable {
 
@@ -180,6 +188,8 @@ public class BufferedRegistroRepositoryAdapter implements RegistroRepositoryPort
         private final BlockingQueue<Registro> cola;
         private final RegistroRepositoryPort delegate;
         private volatile boolean running = true;
+        // FIX PERSIST-02: Timeout dinámico (5000ms normal, 100ms en shutdown)
+        private volatile int pollTimeoutMs = FLUSH_TIMEOUT_MS;
 
         PersistenceWorker(BlockingQueue<Registro> cola, RegistroRepositoryPort delegate) {
             this.cola = cola;
@@ -194,8 +204,10 @@ public class BufferedRegistroRepositoryAdapter implements RegistroRepositoryPort
                 new Object[]{BATCH_SIZE, FLUSH_TIMEOUT_MS});
         }
 
+        // FIX PERSIST-02: Reducir timeout antes de interrumpir para salida rápida
         void shutdown() {
             running = false;
+            pollTimeoutMs = 100; // Timeout corto para no esperar 5s en poll()
             hilo.interrupt(); // Despertar si está bloqueado en poll()
             try {
                 hilo.join(5000); // Esperar a que termine (max 5s)
@@ -214,8 +226,8 @@ public class BufferedRegistroRepositoryAdapter implements RegistroRepositoryPort
 
             while (running || !cola.isEmpty()) {
                 try {
-                    // poll() con timeout para permitir flush periódico
-                    Registro reg = cola.poll(FLUSH_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+                    // FIX PERSIST-02: Usar timeout dinámico (5000ms normal, 100ms en shutdown)
+                    Registro reg = cola.poll(pollTimeoutMs, TimeUnit.MILLISECONDS);
 
                     if (reg != null) {
                         batch.add(reg);

@@ -11,10 +11,20 @@ import java.util.logging.Logger;
 
 /**
  * WindowsJnaNativeAdapter: Adaptador de SALIDA.
- * 
+ *
  * Consulta activamente al sistema operativo Windows via JNA para obtener
  * la ventana de primer plano (foreground window) y su proceso asociado.
- * 
+ *
+ * FIX 2.4 (Filtrado de procesos del sistema):
+ * Aplica la misma lógica de filtrado que JavaProcessResolverAdapter.esProcesoSistema()
+ * para evitar que ventanas de procesos SYSTEM (dwm.exe, csrss.exe, etc.)
+ * se propaguen al dominio como actividad válida del usuario.
+ *
+ * Criterios de filtrado:
+ *   - info().user() contiene "nt authority", "system", "local service", "network service"
+ *   - info().command() contiene "system", "kernel", "init"
+ *   - Fallback conservador: pid < 100 (solo si todo lo demás falla)
+ *
  * NOTA: Este adaptador es específico de Windows. Para otros sistemas
  * operativos, usar JavaProcessResolverAdapter (ProcessHandle puro).
  */
@@ -26,7 +36,6 @@ public class WindowsJnaNativeAdapter {
         try {
             WinDef.HWND hwnd = User32.INSTANCE.GetForegroundWindow();
             if (hwnd == null) {
-                // Uso explícito del método .log() con nivel FINE
                 LOGGER.log(Level.FINE, "[SCAN] OS reporta: sin ventana activa");
                 return Optional.empty();
             }
@@ -43,10 +52,29 @@ public class WindowsJnaNativeAdapter {
             User32.INSTANCE.GetWindowThreadProcessId(hwnd, pidRef);
             int pid = pidRef.getValue();
 
-            String nombreProceso = resolverNombreProceso(pid);
+            // FIX 2.4: Resolver ProcessHandle una sola vez y reutilizar
+            Optional<ProcessHandle> phOpt = ProcessHandle.of(pid);
 
-            // Sintaxis parametrizada explícita que lee la variable LOGGER
-            LOGGER.log(Level.FINE, "[SCAN] Foco detectado: {0} (PID: {1})", new Object[]{nombreProceso, pid});
+            // Validar que el proceso no sea del sistema antes de reportar
+            if (phOpt.isPresent() && esProcesoSistema(phOpt.get())) {
+                String nombreSistema = phOpt
+                    .flatMap(ph -> ph.info().command())
+                    .map(this::extraerNombre)
+                    .orElse("desconocido");
+                LOGGER.log(Level.FINE,
+                    "[SCAN] Ventana de proceso del sistema ignorada: {0} (PID: {1})",
+                    new Object[]{nombreSistema, pid});
+                return Optional.empty();
+            }
+
+            // Reutilizar phOpt para resolver nombre — evita segundo ProcessHandle.of(pid)
+            String nombreProceso = phOpt
+                .flatMap(ph -> ph.info().command())
+                .map(this::extraerNombre)
+                .orElse("desconocido");
+
+            LOGGER.log(Level.FINE, "[SCAN] Foco detectado: {0} (PID: {1})",
+                new Object[]{nombreProceso, pid});
 
             return Optional.of(new VentanaDetectada(nombreProceso, titulo, pid));
 
@@ -59,13 +87,41 @@ public class WindowsJnaNativeAdapter {
         }
     }
 
-    private String resolverNombreProceso(int pid) {
-        return ProcessHandle.of(pid)
-            .flatMap(ph -> ph.info().command())
-            .map(this::extraerNombre)
-            .orElse("desconocido");
+    /**
+     * FIX 2.4: Filtra procesos del sistema que no son del usuario.
+     * Replica la lógica de JavaProcessResolverAdapter.esProcesoSistema()
+     * para mantener consistencia entre ambos adaptadores.
+     *
+     * Windows: NT AUTHORITY\SYSTEM, LOCAL SERVICE, NETWORK SERVICE
+     * Linux: root
+     * macOS: root
+     */
+    private boolean esProcesoSistema(ProcessHandle ph) {
+        Optional<String> userOpt = ph.info().user();
+        if (userOpt.isPresent()) {
+            String user = userOpt.get().toLowerCase();
+            if (user.contains("nt authority") ||
+                user.contains("system") ||
+                user.contains("local service") ||
+                user.contains("network service") ||
+                user.equals("root")) {
+                return true;
+            }
+        }
+
+        Optional<String> cmdOpt = ph.info().command();
+        if (cmdOpt.isPresent()) {
+            String cmd = cmdOpt.get().toLowerCase();
+            return cmd.contains("system") || cmd.contains("kernel") || cmd.contains("init");
+        }
+
+        // Fallback conservador: pid < 100 (solo si todo lo demás falla)
+        return ph.pid() < 100;
     }
 
+    /**
+     * Extrae nombre del ejecutable de una ruta completa.
+     */
     private String extraerNombre(String ruta) {
         if (ruta == null || ruta.isBlank()) return "desconocido";
         String limpia = ruta.replace("\"", "").trim();

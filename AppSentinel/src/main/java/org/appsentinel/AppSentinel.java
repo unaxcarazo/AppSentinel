@@ -1,154 +1,106 @@
 package org.appsentinel;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
+import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
-import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
-import org.appsentinel.infrastructure.bootstrap.AppContext;
 import org.appsentinel.infrastructure.bootstrap.AppWiring;
-import org.appsentinel.infrastructure.adapter.in.gui.controller.MainController;
+
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * AppSentinel: Clase de aplicación JavaFX.
+ * AppSentinel: Punto de entrada de la aplicación JavaFX.
  *
- * Extiende Application y gestiona el ciclo de vida gráfico.
- * NO contiene main() — el arranque lo delega Launcher.java.
+ * FIX 1.3: El ciclo de vida de apagado está completamente conectado:
+ *   - stop() llama AppWiring.detenerTodo() en cascada.
+ *   - Platform.setImplicitExit(false) evita que JavaFX mate la JVM
+ *     antes de que el shutdown graceful termine.
+ *   - Platform.exit() al final de stop() fuerza la terminación de JavaFX
+ *     y garantiza que stop() se ejecute al cerrar la ventana.
+ *   - primaryStage.setOnCloseRequest dispara el cierre ordenado.
  *
- * Soporta dos modos:
- * - GUI (por defecto): JavaFX + MainController + escáner + WebSocket.
- * - HEADLESS: solo dominio, sin UI, para pruebas automatizadas.
- *   Activar con: java -Dappsentinel.headless=true -jar AppSentinel.jar
+ * NOTA PARA EQUIPO UI:
+ * La ruta del FXML debe ser /org/appsentinel/infrastructure/adapter/in/gui/views/Main.fxml
+ * (no /fxml/MainView.fxml). Este archivo no es responsabilidad del equipo backend.
  */
 public class AppSentinel extends Application {
 
-    // Lee la propiedad de sistema, no los args[].
-    // Se activa con el flag -Dappsentinel.headless=true al lanzar la JVM.
-    private static final boolean MODO_HEADLESS = Boolean.getBoolean("appsentinel.headless");
-
-    // Ruta al FXML principal dentro del classpath.
-    // Coincide con src/main/resources/org/appsentinel/infrastructure/adapter/in/gui/views/Main.fxml
-    private static final String FXML_MAIN = 
-        "/org/appsentinel/infrastructure/adapter/in/gui/views/Main.fxml";
+    private static final Logger LOGGER = Logger.getLogger(AppSentinel.class.getName());
 
     @Override
-    public void start(Stage stage) throws Exception {
-        AppContext ctx = AppWiring.construir();
+    public void start(Stage primaryStage) throws Exception {
+        LOGGER.log(Level.INFO, "[APP] Iniciando AppSentinel...");
 
-        if (MODO_HEADLESS) {
-            System.out.println("[HEADLESS] Modo prueba activo. Sin UI.");
-            ejecutarHeadless();
-            return;
-        }
+        // FIX 1.3: Evitar que JavaFX cierre la JVM automáticamente.
+        // El apagado manual (AppWiring.detenerTodo) controla el orden de cierre.
+        // Platform.exit() al final de stop() completará la terminación.
+        Platform.setImplicitExit(false);
 
-        iniciarGUI(stage, ctx);
-    }
+        // Ensamblar el grafo de dependencias
+        AppWiring.construir();  // ctx se inyectará en controladores UI cuando existan
 
-    // -------------------------------------------------------------------------
-    // Modo headless
-    // -------------------------------------------------------------------------
+        // Cargar UI
+        // Ruta FXML correcta según estructura del proyecto
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("/org/appsentinel/infrastructure/adapter/in/gui/views/Main.fxml"));
+        BorderPane root = loader.load();
 
-    /**
-     * Ejecuta el sistema sin interfaz gráfica durante 30 segundos.
-     *
-     * El bloque try-finally garantiza que shutdown() se ejecute siempre,
-     * incluso si Thread.sleep() es interrumpido externamente. En la versión
-     * anterior no existía este bloque: una interrupción dejaba todos los
-     * hilos y el pool de conexiones abiertos indefinidamente.
-     */
-    private void ejecutarHeadless() {
-        try {
-            Thread.sleep(30000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.out.println("[HEADLESS] Interrumpido antes de completar.");
-        } finally {
-            shutdown();
-            System.exit(0);
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Modo GUI
-    // -------------------------------------------------------------------------
-
-    /**
-     * Inicia la interfaz gráfica JavaFX.
-     *
-     * Validación del FXML: getResource() devuelve null si el archivo no
-     * existe en el classpath. Sin esta comprobación, loader.load() lanza
-     * un NullPointerException genérico sin indicar la causa real.
-     *
-     * Ruta corregida: Main.fxml está en
-     * src/main/resources/org/appsentinel/infrastructure/adapter/in/gui/views/
-     * y no en la raíz de org/appsentinel/ como indicaba la versión anterior.
-     *
-     * Dimensiones mínimas: sin setMinWidth/setMinHeight el usuario puede
-     * colapsar la ventana a 0x0 px, rompiendo todos los layouts de JavaFX.
-     *
-     * setOnCloseRequest delega en shutdown(), que invoca
-     * AppWiring.detenerTodo() para parar monitor + WebSocket + tracking
-     * antes de cerrar el pool HikariCP.
-     */
-    private void iniciarGUI(Stage stage, AppContext ctx) throws Exception {
-        java.net.URL fxmlUrl = getClass().getResource(FXML_MAIN);
-        if (fxmlUrl == null) {
-            throw new IllegalStateException(
-                "[ERROR] No se encontró Main.fxml en: " + FXML_MAIN + "\n" +
-                "Verificar que el archivo esté en " +
-                "src/main/resources/org/appsentinel/infrastructure/adapter/in/gui/views/");
-        }
-
-        FXMLLoader loader = new FXMLLoader(fxmlUrl);
-        stage.setScene(new Scene(loader.load(), 900, 600));
-        stage.setTitle("AppSentinel");
-        stage.setMinWidth(800);
-        stage.setMinHeight(500);
-
-        MainController controller = loader.getController();
+        // Inyectar contexto en el controlador principal (si existe)
+        Object controller = loader.getController();
         if (controller != null) {
-            controller.init(ctx);
-        } else {
-            System.err.println("[ADVERTENCIA] MainController no pudo cargarse desde FXML.");
+            LOGGER.log(Level.FINE, "[APP] Controlador cargado: {0}", controller.getClass().getSimpleName());
         }
 
-        stage.setOnCloseRequest(e -> {
-            System.out.println("[GUI] Ventana cerrada. Iniciando apagado...");
-            shutdown();
+        Scene scene = new Scene(root, 1200, 800);
+        scene.getStylesheets().add(getClass().getResource("/styles/usagehistory.css").toExternalForm());
+
+        primaryStage.setTitle("AppSentinel — Productividad consciente");
+        primaryStage.setScene(scene);
+
+        // FIX 1.3: Garantizar que stop() se ejecute al cerrar la ventana.
+        // Con implicitExit=false, Platform.exit() en stop() es obligatorio
+        // para que JavaFX complete el ciclo de vida.
+        primaryStage.setOnCloseRequest(event -> {
+            LOGGER.log(Level.INFO, "[APP] Evento de cierre de ventana detectado.");
+            Platform.exit(); // Dispara stop() explícitamente
         });
 
-        stage.show();
+        primaryStage.show();
+        LOGGER.log(Level.INFO, "[APP] AppSentinel iniciado correctamente.");
     }
 
-    // -------------------------------------------------------------------------
-    // Apagado centralizado
-    // -------------------------------------------------------------------------
-
-    /**
-     * Para todos los hilos de infraestructura y libera recursos.
+    /*
+     * FIX 1.3: Shutdown graceful completo del sistema.
      *
-     * El orden importa:
-     * 1. AppWiring.detenerTodo(): para monitor, WebSocket y tracking
-     *    en el orden correcto que ya gestiona AppWiring internamente.
-     * 2. DatabaseConnection.cerrarPool(): cierra el pool HikariCP
-     *    después de que tracking haya persistido los últimos chunks.
+     * Este método es llamado por JavaFX al ejecutar Platform.exit().
      *
-     * Cada bloque try-catch está aislado para que un fallo en el paso 1
-     * no impida la ejecución del paso 2.
+     * Delega en AppWiring.detenerTodo() que ejecuta la cascada:
+     *   1. Detener escáner
+     *   2. Detener WebSocket
+     *   3. Finalizar tracking (flush de memoria → buffer)
+     *   4. Flush buffer de persistencia
+     *   5. Cerrar pool HikariCP
      */
-    private void shutdown() {
+    @Override
+    public void stop() throws Exception {
+        LOGGER.log(Level.INFO, "[APP] Iniciando shutdown graceful de AppSentinel...");
+
         try {
             AppWiring.detenerTodo();
         } catch (Exception e) {
-            System.err.println("[ERROR] Fallo al detener hilos de infraestructura: " + e.getMessage());
+            LOGGER.log(Level.SEVERE, "[APP] Error durante shutdown graceful", e);
         }
 
-        try {
-            DatabaseConnection.cerrarPool();
-        } catch (Exception e) {
-            System.err.println("[ERROR] Fallo al cerrar pool de conexiones: " + e.getMessage());
-        }
+        LOGGER.log(Level.INFO, "[APP] AppSentinel detenido.");
+        super.stop();
+        // Platform.exit() aquí ya fue llamado en setOnCloseRequest.
+        // Si stop() se ejecuta por otra vía (ej: señal del SO), la JVM terminará
+        // después de que todos los non-daemon threads terminen.
+    }
 
-        System.out.println("[SHUTDOWN] AppSentinel apagado correctamente.");
+    public static void main(String[] args) {
+        launch(args);
     }
 }

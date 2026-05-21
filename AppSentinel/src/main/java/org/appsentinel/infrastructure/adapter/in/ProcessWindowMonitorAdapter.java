@@ -1,5 +1,6 @@
 package org.appsentinel.infrastructure.adapter.in;
 
+import java.time.Instant;
 import java.util.Optional;
 import org.appsentinel.domain.port.in.MonitorPort;
 import org.appsentinel.infrastructure.adapter.out.JavaProcessResolverAdapter;
@@ -12,6 +13,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * ProcessWindowMonitorAdapter: Adaptador de ENTRADA para detección de ventanas activas.
+ *
+ * FIX 2.1 (Pureza Hexagonal):
+ * El adaptador resuelve el startInstant del proceso via ProcessHandle/JNA
+ * ANTES de notificar al dominio. TimeTrackingService ya no consulta
+ * java.lang.ProcessHandle directamente.
+ *
+ * Flujo:
+ *   1. JNA detecta ventana activa (Windows) o JavaProcessResolver (fallback).
+ *   2. Se resuelve startInstant = ProcessHandle.of(pid).info().startInstant().
+ *   3. Se notifica al dominio: monitorPort.reportarActividadSistema(..., startInstant).
+ */
 public class ProcessWindowMonitorAdapter {
 
     private static final Logger LOGGER = Logger.getLogger(ProcessWindowMonitorAdapter.class.getName());
@@ -72,23 +86,37 @@ public class ProcessWindowMonitorAdapter {
             Optional<WindowsJnaNativeAdapter.VentanaDetectada> jna = jnaAdapter.consultarVentanaActiva();
             if (jna.isPresent()) {
                 WindowsJnaNativeAdapter.VentanaDetectada v = jna.get();
-                // FIX: Propagamos el PID que JNA extrajo de la ventana activa
                 return Optional.of(new DatosActividad(v.nombreProceso(), v.tituloVentana(), v.pid()));
             }
             LOGGER.log(Level.FINE, "[MONITOR] JNA no detectó ventana, probando fallback Java");
         }
 
         Optional<JavaProcessResolverAdapter.ProcesoInferido> java = javaAdapter.consultarProcesoPrincipal();
-        // FIX: Fallback Java sin PID preciso (cross-platform). -1 indica "desconocido".
-        return java.map(p -> new DatosActividad(p.nombreProceso(), p.tituloVentana(), -1));
+        return java.map(p -> new DatosActividad(p.nombreProceso(), p.tituloVentana(), p.pid()));
     }
 
+    /**
+     * FIX 2.1: Resuelve startInstant en infraestructura antes de notificar al dominio.
+     * El dominio (TimeTrackingService) ya no consulta ProcessHandle.
+     */
     private void notificarDominio(DatosActividad datos) {
-        LOGGER.log(Level.FINE, "[MONITOR] Notificando dominio: {0} (PID: {1})", 
-            new Object[]{datos.nombreProceso, datos.pid});
-        monitorPort.reportarActividadSistema(datos.nombreProceso, datos.tituloVentana, datos.pid);
+        Instant startInstant = null;
+        if (datos.pid > 0) {
+            startInstant = ProcessHandle.of(datos.pid)
+                .flatMap(ph -> ph.info().startInstant())
+                .orElse(null);
+        }
+
+        LOGGER.log(Level.FINE, "[MONITOR] Notificando dominio: {0} (PID: {1}, startInstant: {2})",
+            new Object[]{datos.nombreProceso, datos.pid, startInstant});
+
+        monitorPort.reportarActividadSistema(
+            datos.nombreProceso,
+            datos.tituloVentana,
+            datos.pid,
+            startInstant
+        );
     }
 
-    // FIX: Record ampliado con PID para no perder la identidad única del proceso en foco
     private record DatosActividad(String nombreProceso, String tituloVentana, int pid) {}
 }

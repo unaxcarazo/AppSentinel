@@ -10,6 +10,7 @@ import org.appsentinel.domain.port.out.NotificacionPort;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -19,8 +20,7 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
-import java.time.Instant;
-import org.appsentinel.domain.port.in.FocoActivoPort;
+import org.appsentinel.domain.port.out.FocoActivoPort;
 
 /**
  * TimeTrackingService: Orquestador principal del seguimiento de actividad.
@@ -34,6 +34,11 @@ import org.appsentinel.domain.port.in.FocoActivoPort;
  *   Se preparan objetos Registro dentro del lock y se flushean FUERA del lock
  *   via repository.guardar(), que es NON-BLOCKING (encola en buffer de memoria).
  *   Un PersistenceWorker en infraestructura procesa asíncronamente.
+ *
+ * FIX 2.1 (Pureza Hexagonal):
+ * El dominio ya NO consulta java.lang.ProcessHandle. El startInstant del proceso
+ * llega como parámetro desde el adaptador de entrada (ProcessWindowMonitorAdapter),
+ * que es el único responsable de resolver metadatos del sistema operativo.
  *
  * ANTI-SATURACIÓN:
  * - Foco activo: acumula en memoria, persiste al perder foco (1 INSERT por sesión).
@@ -81,6 +86,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
     private volatile LocalDateTime ultimoInputUsuario = LocalDateTime.now();
 
+
     public TimeTrackingService(DistractionDetector detector,
                                RegistroRepositoryPort repository,
                                NotificacionPort notificacion,
@@ -110,12 +116,17 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     // Puertos de entrada (Eventos del Sistema/Web)
     // -------------------------------------------------------------------------
 
+    /**
+     * FIX 2.1: Recibe startInstant resuelto por el adaptador de entrada.
+     * El dominio ya NO consulta ProcessHandle.
+     */
     @Override
-    public void reportarActividadSistema(String proceso, String titulo, int pid) {
+    public void reportarActividadSistema(String proceso, String titulo, int pid, Instant startInstant) {
         ultimoInputUsuario = LocalDateTime.now();
         List<Registro> pendientes = new ArrayList<>();
         synchronized (lockLimpieza) {
-            procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso), titulo, -1, pid, pendientes);
+            procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso),
+                              titulo, -1, pid, startInstant, pendientes);
         }
         flushearPendientes(pendientes);
     }
@@ -130,7 +141,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                 "WEB|" + dominio,
                 "Web: " + (titulo != null ? titulo : dominio),
                 detector.clasificarUrl(url),
-                dominio, tabId, -1, pendientes
+                dominio, tabId, -1, null, pendientes
             );
         }
         flushearPendientes(pendientes);
@@ -169,8 +180,13 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     // Lógica principal y Evaluación
     // -------------------------------------------------------------------------
 
+    /**
+     * FIX 2.1: Recibe startInstant como parámetro desde el adaptador de entrada.
+     * El dominio nunca consulta ProcessHandle ni ninguna API del sistema operativo.
+     */
     private void procesarActividad(String clave, String nombre, String categoria,
                                    String detalle, int tabId, int pid,
+                                   Instant startInstant,
                                    List<Registro> pendientes) {
         LocalDateTime ahora = LocalDateTime.now();
 
@@ -207,14 +223,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                 return;
             }
 
-            // FIX A.1: Capturar startInstant del proceso para validación anti-reciclaje
-            Instant startInstant = null;
-            if (pid > 0) {
-                startInstant = java.lang.ProcessHandle.of(pid)
-                    .flatMap(ph -> ph.info().startInstant())
-                    .orElse(null);
-            }
-
+            // FIX 2.1: startInstant ya viene resuelto por el adaptador de entrada.
+            // No se consulta ProcessHandle en el dominio.
             activas.clear();
             activas.put(clave, new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid, startInstant));
             LOGGER.log(Level.INFO, "[FOCO] {0} (startInstant={1})", new Object[]{nombre, startInstant});
@@ -250,7 +260,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             return null;
         }
 
-        Registro reg = encolarChunkFoco(clave, seg, totalAFlush, ahora);
+        Registro reg = encolarChunkFoco(seg, totalAFlush, ahora);
 
         seg.segundosAcumulados = 0;
         seg.inicio = ahora;
@@ -335,7 +345,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             .build();
     }
 
-    private Registro encolarChunkFoco(String clave, SeguimientoActividad seg, long segs, LocalDateTime ahora) {
+    private Registro encolarChunkFoco(SeguimientoActividad seg, long segs, LocalDateTime ahora) {
         return Registro.builder()
             .usuarioSistema(usuario)
             .nombreActividad(seg.nombre)
@@ -382,7 +392,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
         long totalAFlush = seg.segundosAcumulados + segsFoco;
         if (totalAFlush <= 0) return null;
-        return encolarChunkFoco(null, seg, totalAFlush, ahora);
+        return encolarChunkFoco(seg, totalAFlush, ahora);
     }
 
     public void finalizar() {
@@ -489,7 +499,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         String nombre, detalle, categoria;
         LocalDateTime inicio, ultimaVezVista;
         int tabId, pid;
-        Instant startInstant;  // FIX A.1: capturado al detectar, validado al matar
+        Instant startInstant;  // FIX A.1 / FIX 2.1: capturado por adaptador, validado al matar
         EstadoDistraccion estado = EstadoDistraccion.INICIADA;
         long segundosAcumulados = 0;
 
@@ -506,7 +516,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         String categoria;
         LocalDateTime inicio, ultimaVezVista;
         long segundosFocoAcumulado = 0L;
-        long segundosBackgroundAcumulados = 0L;  // NUEVO: acumulador BG anti-saturación
+        long segundosBackgroundAcumulados = 0L;
         boolean notificadaSinClasificar = false;
 
         SesionExistencia(String clave, String nombre, String categoria, LocalDateTime inicio) {

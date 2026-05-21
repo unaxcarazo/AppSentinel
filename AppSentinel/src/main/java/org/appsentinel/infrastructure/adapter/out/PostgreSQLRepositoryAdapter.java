@@ -1,21 +1,35 @@
 package org.appsentinel.infrastructure.adapter.out;
 
 import org.appsentinel.domain.model.Registro;
+import org.appsentinel.domain.model.ResumenActividad;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
 
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * PostgreSQLRepositoryAdapter: Adaptador de SALIDA para la persistencia del historial.
- * 
+ *
  * FIX BATCH: Implementa guardarBatch() con PreparedStatement.addBatch() + executeBatch()
  * en transacción atómica (setAutoCommit(false) + commit()).
- * Un batch de 50 registros = 1 round-trip de red en lugar de 50.
+ *
+ * FIX UI: obtenerResumenPorApp() usa GROUP BY para que cada app aparezca UNA SOLA VEZ
+ * con su tiempo total acumulado, eliminando duplicados de la vista.
+ *
+ * FIX 2.3 (SQL Sargable + Preservar Orden):
+ * - Reemplaza DATE(fecha_registro) = CURRENT_DATE por rango de timestamp
+ *   que aprovecha índices B-Tree: >= CURRENT_DATE AND < CURRENT_DATE + INTERVAL '1 day'.
+ * - Cambia HashMap por LinkedHashMap en obtenerResumenPorApp() para preservar
+ *   el ORDER BY tiempo_total_seg DESC de PostgreSQL.
+ *
+ * ÍNDICE RECOMENDADO:
+ *   CREATE INDEX idx_registros_user_fecha ON registros_actividad(usuario_sistema, fecha_registro);
  */
 public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
@@ -31,7 +45,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         if (registro == null) return;
 
         String sql = """
-            INSERT INTO registros_actividad 
+            INSERT INTO registros_actividad
             (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
             VALUES (?, ?, ?, ?, ?, ?)
             """;
@@ -48,7 +62,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
                 }
             }
 
-            LOGGER.log(Level.FINE, "[PERSISTENCIA] Registro guardado: {0} ({1}s)", 
+            LOGGER.log(Level.FINE, "[PERSISTENCIA] Registro guardado: {0} ({1}s)",
                 new Object[]{truncar(registro.getNombreActividad(), 50), registro.getDuracionSeg()});
 
         } catch (SQLException e) {
@@ -66,7 +80,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         if (registros == null || registros.isEmpty()) return;
 
         String sql = """
-            INSERT INTO registros_actividad 
+            INSERT INTO registros_actividad
             (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
             VALUES (?, ?, ?, ?, ?, ?)
             """;
@@ -123,14 +137,19 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         stmt.setTimestamp(6, Timestamp.valueOf(reg.getFechaRegistro()));
     }
 
+    /**
+     * FIX 2.3: SQL sargable — reemplaza DATE(fecha_registro) = CURRENT_DATE
+     * por rango de timestamp que aprovecha índices B-Tree.
+     */
     @Override
     public List<Registro> obtenerTodosHoy(String usuario) {
         List<Registro> registros = new ArrayList<>();
         String sql = """
-            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
-            FROM registros_actividad 
-            WHERE usuario_sistema = ? 
-            AND DATE(fecha_registro) = CURRENT_DATE
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro
+            FROM registros_actividad
+            WHERE usuario_sistema = ?
+              AND fecha_registro >= CURRENT_DATE
+              AND fecha_registro < CURRENT_DATE + INTERVAL '1 day'
             ORDER BY fecha_registro DESC
             """;
 
@@ -151,14 +170,25 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         return registros;
     }
 
+    /**
+     * FIX 2.3: SQL sargable — mismo rango de timestamp que obtenerTodosHoy.
+     *
+     * NOTA SOBRE CATEGORÍAS DE BACKGROUND:
+     * Este método filtra por coincidencia exacta de la categoría pasada como parámetro.
+     * Si se pasa "PRODUCTIVO", NO devolverá registros con categoría "BACKGROUND_PRODUCTIVO".
+     * Las categorías de segundo plano (prefijo BACKGROUND_) se gestionan de forma separada
+     * en el dominio y no están incluidas en los resultados de foco activo.
+     * La UI debe consumir este método sabiendo que solo recibe registros de foco directo.
+     */
     @Override
     public List<Registro> obtenerPorCategoria(String usuario, String categoria) {
         List<Registro> registros = new ArrayList<>();
         String sql = """
-            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
-            FROM registros_actividad 
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro
+            FROM registros_actividad
             WHERE usuario_sistema = ? AND categoria = ?
-            AND DATE(fecha_registro) = CURRENT_DATE
+              AND fecha_registro >= CURRENT_DATE
+              AND fecha_registro < CURRENT_DATE + INTERVAL '1 day'
             ORDER BY duracion_seg DESC
             """;
 
@@ -178,6 +208,67 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         }
 
         return registros;
+    }
+
+    /**
+     * FIX UI + FIX 2.3: Resumen agrupado por aplicación.
+     *
+     * Cada app aparece UNA SOLA VEZ con su tiempo total acumulado.
+     * SQL: GROUP BY nombre_actividad, categoria + SUM(duracion_seg) + MAX(fecha_registro)
+     *
+     * FIX 2.3: Usa LinkedHashMap para preservar el orden descendente de tiempo total
+     * que PostgreSQL devuelve via ORDER BY. HashMap perdía el orden.
+     *
+     * @param usuario Usuario del sistema operativo
+     * @return Map<nombre_actividad, ResumenActividad> ordenado por tiempo total DESC.
+     *         LinkedHashMap preserva el orden de inserción (orden de la query).
+     */
+    @Override
+    public Map<String, ResumenActividad> obtenerResumenPorApp(String usuario) {
+        // FIX 2.3: LinkedHashMap preserva el orden de inserción (orden del ORDER BY SQL)
+        Map<String, ResumenActividad> resumen = new LinkedHashMap<>();
+
+        String sql = """
+            SELECT
+                nombre_actividad,
+                categoria,
+                SUM(duracion_seg) as tiempo_total_seg,
+                MAX(fecha_registro) as ultima_vez
+            FROM registros_actividad
+            WHERE usuario_sistema = ?
+              AND fecha_registro >= CURRENT_DATE
+              AND fecha_registro < CURRENT_DATE + INTERVAL '1 day'
+            GROUP BY nombre_actividad, categoria
+            ORDER BY tiempo_total_seg DESC
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String nombre = rs.getString("nombre_actividad");
+                    String categoria = rs.getString("categoria");
+                    long tiempoTotal = rs.getLong("tiempo_total_seg");
+                    Timestamp ultimaVez = rs.getTimestamp("ultima_vez");
+
+                    resumen.put(nombre, new ResumenActividad(
+                        nombre,
+                        categoria,
+                        tiempoTotal,
+                        ultimaVez != null ? ultimaVez.toLocalDateTime() : null
+                    ));
+                }
+            }
+
+            LOGGER.log(Level.FINE, "[PERSISTENCIA] Resumen por app: {0} apps únicas hoy", resumen.size());
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al generar resumen agrupado por app", e);
+        }
+
+        return resumen;
     }
 
     private Registro mapearRegistro(ResultSet rs) throws SQLException {

@@ -28,7 +28,7 @@ import javafx.scene.layout.HBox;
 // ⚠️ ASEGÚRATE DE QUE ESTAS RUTAS SEAN LAS DE TU PROYECTO:
 import org.appsentinel.domain.model.ProcesoInfo;
 import org.appsentinel.domain.model.SystemMetrics;
-import org.appsentinel.domain.port.in.PerformanceUseCase;
+import org.appsentinel.domain.port.out.RendimientoSistemaPort;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
 
 public class PerformanceController implements Initializable, Controllable {
@@ -56,7 +56,7 @@ public class PerformanceController implements Initializable, Controllable {
     @FXML private TableColumn<ProcesoInfo, Double> colRam;
     @FXML private TableColumn<ProcesoInfo, Long> colTime;
 
-    private PerformanceUseCase performanceService;
+    private RendimientoSistemaPort rendimientoService;
     private Timer timer;
     private XYChart.Series<Number, Number> rxSeries;
     private XYChart.Series<Number, Number> txSeries;
@@ -65,7 +65,7 @@ public class PerformanceController implements Initializable, Controllable {
     @Override
     public void init(AppContext ctx) {
         // ⚠️ Si da error aquí, revisa en AppContext cómo se llama el método (ej: ctx.getPerformanceService())
-        this.performanceService = ctx.performance(); 
+        this.rendimientoService = ctx.rendimiento(); 
         Platform.runLater(this::startRepeatingUpdate);
     }
 
@@ -99,8 +99,8 @@ public class PerformanceController implements Initializable, Controllable {
         colRam.setCellFactory(col -> new ProgressBarCell("micro-bar-orange"));
         
         txtSearchProcess.textProperty().addListener((obs, oldVal, newVal) -> {
-            if (performanceService != null) {
-                updateTableData(performanceService.getLatestMetrics());
+            if (rendimientoService != null) {
+                updateTableData(rendimientoService.);
             }
         });
     }
@@ -110,8 +110,8 @@ public class PerformanceController implements Initializable, Controllable {
         timer.scheduleAtFixedRate(new TimerTask() {
             @Override
             public void run() {
-                if (performanceService != null) {
-                    SystemMetrics metrics = performanceService.getLatestMetrics();
+                if (rendimientoService != null) {
+                    SystemMetrics metrics = rendimientoService.;
                     if (metrics != null) {
                         Platform.runLater(() -> updateUI(metrics));
                     }

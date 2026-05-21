@@ -89,4 +89,14 @@ public interface RegistroRepositoryPort {
      *         Vacío si no hay registros hoy. Orden implícito por tiempo total DESC.
      */
     Map<String, ResumenActividad> obtenerResumenPorApp(String usuario);
+    
+    List<Registro> obtenerTopDistracciones(String usuario, int limite);
+    
+    List<Registro> obtenerTopTrabajo(String usuario, int limite);
+    
+    List<Registro> obtenerActividadHoy(String usuario);
+    
+    List<Registro> obtenerBloqueosHoy(String usuario);
+    
+    List<Registro> obtenerHistorialCompleto();
 }

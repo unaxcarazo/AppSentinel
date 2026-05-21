@@ -105,7 +105,7 @@ public class AppWiring {
             notificacion,
             killer,
             rendimiento,
-            tracking       // FocoActivoPort (domain.port.out, misma instancia, rol distinto)
+            tracking // FocoActivoPort (domain.port.out, misma instancia, rol distinto)
         );
     }
 

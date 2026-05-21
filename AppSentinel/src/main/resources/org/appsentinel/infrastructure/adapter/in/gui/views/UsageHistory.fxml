@@ -1,14 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import java.lang.*?>
-<?import java.net.*?>
-<?import java.util.*?>
-<?import javafx.scene.*?>
-<?import javafx.scene.control.*?>
-<?import javafx.scene.layout.*?>
+<?import java.net.URL?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.VBox?>
 
-<AnchorPane id="AnchorPane" prefHeight="400.0" prefWidth="600.0" styleClass="mainFxmlClass" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.appsentinel.infrastructure.gui.controller.UsageHistoryController">
+<VBox spacing="25" styleClass="history-upper-container" 
+      xmlns="http://javafx.com/javafx/26" 
+      xmlns:fx="http://javafx.com/fxml/1" 
+      fx:controller="org.appsentinel.infrastructure.adapter.in.gui.controller.UsageHistoryController">
+    
     <stylesheets>
-        <URL value="@/styles/usagehistory.css"/>
+        <URL value="@/styles/usagehistory.css" />
     </stylesheets>
-</AnchorPane>
+
+    <children>
+        <VBox spacing="6">
+            <children>
+                <HBox alignment="CENTER_LEFT" spacing="10">
+                    <children>
+                        <Label styleClass="history-icon" text="🔄" />
+                        <Label styleClass="history-main-title" text="USAGE HISTORY" />
+                    </children>
+                </HBox>
+                <Label styleClass="history-subtitle" text="Comprehensive log of application activity and blocking events." />
+            </children>
+        </VBox>
+        
+        <HBox alignment="CENTER_LEFT" spacing="15">
+            <children>
+                <HBox alignment="CENTER_LEFT" styleClass="search-box" HBox.hgrow="ALWAYS">
+                    <children>
+                        <Label styleClass="search-icon" text="🔍" />
+                        <TextField fx:id="txtSearch" promptText="Search by application name..." styleClass="search-field" HBox.hgrow="ALWAYS" />
+                    </children>
+                </HBox>
+                <ComboBox fx:id="comboFilter" prefWidth="200.0" styleClass="cyber-combo" promptText="All Activities" />
+            </children>
+        </HBox>
+        
+        <HBox styleClass="table-header" alignment="CENTER_LEFT" spacing="10">
+            <children>
+                <Label text="APPLICATION NAME" prefWidth="250.0" minWidth="250.0" maxWidth="250.0" styleClass="header-cell" />
+                <Region HBox.hgrow="ALWAYS" />
+                
+                <Label text="START TIME" prefWidth="120.0" minWidth="120.0" maxWidth="120.0" alignment="CENTER" styleClass="header-cell" />
+                <Region HBox.hgrow="ALWAYS" />
+                
+                <Label text="DURATION" prefWidth="120.0" minWidth="120.0" maxWidth="120.0" alignment="CENTER" styleClass="header-cell" />
+                <Region HBox.hgrow="ALWAYS" />
+                
+                <Label text="STATUS" prefWidth="100.0" minWidth="100.0" maxWidth="100.0" alignment="CENTER" styleClass="header-cell" />
+            </children>
+        </HBox>
+        
+        <ScrollPane fitToWidth="true" styleClass="cyber-scroll-pane" VBox.vgrow="ALWAYS" hbarPolicy="NEVER">
+            <content>
+                <VBox fx:id="vboxTableRows" spacing="0" styleClass="table-body" />
+            </content>
+        </ScrollPane>
+    </children>
+</VBox>

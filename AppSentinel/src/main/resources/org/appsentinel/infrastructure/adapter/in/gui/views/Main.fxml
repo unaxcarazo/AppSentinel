@@ -1,37 +1,66 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?import javafx.scene.layout.*?>
-<?import javafx.scene.control.*?>
 
-<!-- CORRECCIÓN: Apuntar al paquete exacto de la arquitectura hexagonal -->
-<BorderPane xmlns:fx="http://javafx.com/fxml"
-            fx:controller="org.appsentinel.infrastructure.gui.controller.MainController"
-            prefWidth="1200" prefHeight="700">
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Button?>
 
-    <!-- SIDEBAR izquierdo -->
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            xmlns="http://javafx.com/javafx/25.0.2"
+            fx:controller="org.appsentinel.infrastructure.adapter.in.gui.controller.MainController"
+            prefWidth="1200" prefHeight="700"
+            style="-fx-background-color: #0d1117;">
+
     <left>
-        <VBox styleClass="sidebar" prefWidth="220">
-            <Label text="APPSENTINEL" styleClass="logo"/>
-            <Button fx:id="btnDashboard"
-                    text="General Dashboard"
-                    onAction="#onDashboard"/>
-            <Button fx:id="btnAppBlocker"
-                    text="App Blocker"
-                    onAction="#onAppBlocker"/>
-            <Button fx:id="btnPerformance"
-                    text="Performance and Processes"
-                    onAction="#onPerformance"/>
-            <Button fx:id="btnHistory"
-                    text="Usage History"
-                    onAction="#onHistory"/>
-            <Button text="START DEEP FOCUS"
-                    styleClass="btnFocus"
-                    onAction="#onDeepFocus"/>
+        <VBox prefWidth="220" spacing="10" style="-fx-padding: 25 15 25 15; -fx-background-color: #0d1117;">
+            <children>
+                <Label text="⚡ EXTREMA" style="-fx-text-fill: #ffffff; -fx-font-size: 18; -fx-font-weight: bold; -fx-padding: 0 0 20 5;"/>
+                
+                <Button fx:id="btnDashboard"
+                        text="📊 General Dashboard"
+                        styleClass="menu-button"
+                        maxWidth="500.0"
+                        onAction="#onDashboard"/>
+                        
+                <Button fx:id="btnAppBlocker"
+                        text="🚫 App Blocker"
+                        styleClass="menu-button"
+                        maxWidth="500.0"
+                        onAction="#onAppBlocker"/>
+                        
+                <Button fx:id="btnPerformance"
+                        text="📉 Performance &amp; Processes"
+                        styleClass="menu-button"
+                        maxWidth="500.0"
+                        onAction="#onPerformance"/>
+                        
+                <Button fx:id="btnHistory"
+                        text="🔄 Usage History"
+                        styleClass="menu-button"
+                        maxWidth="500.0"
+                        onAction="#onHistory"/>
+                        
+                <Region VBox.vgrow="ALWAYS" />
+                        
+                <Button fx:id="btnDeepFocus"
+                        text="START DEEP FOCUS"
+                        styleClass="btnFocus"
+                        maxWidth="500.0"
+                        onAction="#onDeepFocus"
+                        style="-fx-background-color: rgba(255, 92, 0, 0.1); 
+                        -fx-text-fill: #ff5c00; -fx-border-color: #ff5c00; 
+                        -fx-border-radius: 6; -fx-background-radius: 6; 
+                        -fx-font-weight: bold; -fx-padding: 12;"/>
+            </children>
         </VBox>
     </left>
 
-    <!-- CONTENEDOR central — aquí carga cada vista -->
     <center>
-        <AnchorPane fx:id="contenedor"/>
+        <AnchorPane fx:id="contenedor" style="-fx-background-color: #0d1117;">
+        </AnchorPane>
     </center>
 
 </BorderPane>
+

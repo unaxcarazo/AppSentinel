@@ -23,6 +23,69 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import org.appsentinel.domain.port.out.FocoActivoPort;
 
+/**
+ * TimeTrackingService: Orquestador principal del seguimiento de actividad.
+ *
+ * REGLAS DE NEGOCIO:
+ * 1. TODAS las apps detectadas tienen un reloj de existencia continuo (sesiones).
+ * 2. Solo la app con FOCO ACTIVO puede ser evaluada para bloqueo.
+ * 3. Las apps en segundo plano se registran como "BACKGROUND_X" → nunca se bloquean.
+ * 4. Si el usuario está AUSENTE (sin reportes en SEGUNDOS_AUSENCIA_USUARIO), los relojes se congelan.
+ * 5. El bloqueo se dispara solo cuando una DISTRACCION supera segundosBloqueo con foco activo.
+ *
+ * OPTIMIZACIÓN DE PERSISTENCIA (Anti-saturación):
+ * El escáner sigue ejecutándose cada 10 segundos (requisito funcional), pero la
+ * persistencia en PostgreSQL ya NO ocurre en cada ciclo. En su lugar:
+ *
+ *   - Foco activo: acumula segundos en memoria (segundosAcumulados). Solo se
+ *     persiste cuando la app pierde el foco (cambio de ventana/pestaña) o al
+ *     cerrar la sesión (purgarSesionesMuertas / finalizar).
+ *   - Segundo plano: se persiste cada ciclo de mantenimiento (10s) como antes,
+ *     pero solo para apps que NO tienen foco. Esto es inevitable: necesitamos
+ *     saber que la app sigue viva en segundo plano.
+ *
+ * RESULTADO:
+ *   - VS Code 2h sin interrupciones: 1 INSERT (antes 720).
+ *   - Chrome con 10 tabs: 1 INSERT por tab activa (antes 360 por tab).
+ *   - Segundo plano: mantiene chunks de 10s (correcto, son apps distintas).
+ *
+ * INVARIANTE DE PERSISTENCIA:
+ * - Una app enfocada → persiste SOLO al perder foco o cerrar sesión.
+ * - Una app en segundo plano → persiste cada 10s via persistirChunkExistencia.
+ * - Esta regla se aplica uniformemente en el ciclo normal, en la purga y en el cierre.
+ *
+ * FIX A.1 (Anti-PID-Recycling):
+ * - SeguimientoActividad almacena startInstant del proceso detectado.
+ * - Se sincroniza en cada reporte cuando esMismaApp == true.
+ * - ProcessKillerAdapter recibe startInstant para validar que el PID no fue reciclado.
+ *
+ * FIX ARCH-03 (AtomicReference<Map>):
+ * - activasRef usa AtomicReference con reasignación atómica.
+ * - Elimina ventana de inconsistencia entre clear() y put().
+ *
+ * FIX FIX-1 (segundosFocoAcumulado):
+ * - Acumulador actualizado en avanzarRelojesYVerificar() para background.
+ * - Acumulador de foco actualizado únicamente via flushFocoYActualizarHistorico().
+ *
+ * FIX FIX-2 (Separación histórico vs delta):
+ * - totalFoco = segundosFocoAcumulado (histórico persistido) + segundosAcumulados (memoria actual).
+ * - Sin sumar Duration.between(seg.inicio, ahora) porque seg.inicio se resetea tras acumular.
+ *
+ * FIX FIX-3 (claveWebActivaReciente):
+ * - Búsqueda explícita con filtro temporal sobre sesiones, no sobre activas.
+ *
+ * FIX FIX-5 (Duplicación de flush en shutdown):
+ * - awaitTermination() antes de lock de flush final.
+ * - flushFocoYActualizarHistorico() unificado: un solo punto de verdad.
+ *
+ * FIX FIX-6 (Campo muerto ultimaVezVista):
+ * - Eliminado de SeguimientoActividad. Usa SesionExistencia.ultimaVezVista.
+ *
+ * FIX BUG-3 (Fuga de histórico en purga/shutdown):
+ * - flushFocoYActualizarHistorico() es el ÚNICO método que actualiza segundosFocoAcumulado.
+ * - Aplicado en: cambio de foco, purga de sesiones, shutdown graceful.
+ * - Garantiza que todo tiempo de foco flusheado se suma al histórico.
+ */
 public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoActivoPort {
 
     private static final Logger LOGGER = Logger.getLogger(TimeTrackingService.class.getName());
@@ -181,8 +244,11 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         boolean esNavegadorSO = clave.startsWith("SYS|") && esProcesoNavegador(nombre);
 
         if (!esMismaApp) {
-            Registro flushAnterior = prepararFlushFocoActivo(ahora);
-            if (flushAnterior != null) pendientes.add(flushAnterior);
+            // FIX BUG-3: Usar flushFocoYActualizarHistorico() para el foco anterior
+            if (!activas.isEmpty()) {
+                Map.Entry<String, SeguimientoActividad> entry = activas.entrySet().iterator().next();
+                flushFocoYActualizarHistorico(entry.getKey(), entry.getValue(), ahora, pendientes);
+            }
 
             String claveWebActiva = esNavegadorSO ? claveWebActivaReciente(activas, ahora) : null;
             if (claveWebActiva != null) {
@@ -203,39 +269,65 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             if (seg != null) {
                 if (tabId > 0) seg.tabId = tabId;
                 if (pid   > 0) seg.pid   = pid;
+                // FIX A.1: Sincronizar startInstant en cada reporte para evitar
+                // desincronización con ProcessKillerAdapter (anti-PID-recycling).
+                // Si startInstant es null (fallback Java), preservar el valor anterior.
+                if (startInstant != null) {
+                    seg.startInstant = startInstant;
+                }
             }
         }
     }
 
-    private Registro prepararFlushFocoActivo(LocalDateTime ahora) {
-        Map<String, SeguimientoActividad> activas = activasRef.get();
-        if (activas.isEmpty()) return null;
+    // -------------------------------------------------------------------------
+    // FIX BUG-3: Método unificado de flush de foco + actualización histórico
+    // -------------------------------------------------------------------------
 
-        Map.Entry<String, SeguimientoActividad> entry = activas.entrySet().stream().findFirst().orElse(null);
-        if (entry == null) return null;
-
-        String clave = entry.getKey();
-        SeguimientoActividad seg = entry.getValue();
-
+    /**
+     * Flushea el tiempo acumulado de foco a un Registro, actualiza el histórico
+     * de la sesión, y resetea los acumuladores para una nueva sesión de foco.
+     *
+     * <p><strong>Invariante:</strong> Este es el ÚNICO método que incrementa
+     * {@code SesionExistencia.segundosFocoAcumulado}. Garantiza que todo tiempo
+     * de foco flusheado (por cambio de foco, purga o shutdown) se suma al
+     * histórico y estará disponible en {@code obtenerFocoAcumulado()}.</p>
+     *
+     * @param clave    Clave de la app en foco (SYS|nombre o WEB|dominio)
+     * @param seg      SeguimientoActividad del foco actual
+     * @param ahora    Timestamp del flush
+     * @param destino  Lista donde encolar el Registro generado (nullable)
+     * @return Registro generado, o null si no hay tiempo acumulado
+     */
+    private Registro flushFocoYActualizarHistorico(String clave, SeguimientoActividad seg,
+                                                    LocalDateTime ahora, List<Registro> destino) {
         long segsFoco    = Duration.between(seg.inicio, ahora).getSeconds();
         long totalAFlush = seg.segundosAcumulados + segsFoco;
 
         if (totalAFlush <= 0) {
+            // Resetear acumuladores aunque no haya nada que flushear
+            seg.segundosAcumulados = 0;
             seg.inicio = ahora;
+            seg.estado = EstadoDistraccion.INICIADA;
             return null;
         }
 
         Registro reg = encolarChunkFoco(seg, totalAFlush, ahora);
+        if (destino != null) destino.add(reg);
 
+        // ÚNICO punto de incremento del histórico de foco
+        SesionExistencia sesion = sesiones.get(clave);
+        if (sesion != null) {
+            sesion.segundosFocoAcumulado += totalAFlush;
+        }
+
+        // Resetear acumuladores para nueva sesión de foco
         seg.segundosAcumulados = 0;
         seg.inicio = ahora;
         seg.estado = EstadoDistraccion.INICIADA;
 
-        SesionExistencia sesion = sesiones.get(clave);
-        if (sesion != null) sesion.segundosFocoAcumulado += totalAFlush;
-
-        LOGGER.log(Level.INFO, "[FLUSH-PREP] {0} → {1}s listo para persistir",
-            new Object[]{seg.nombre, totalAFlush});
+        LOGGER.log(Level.INFO, "[FLUSH-HIST] {0} → {1}s sumados al histórico (total hist: {2}s)",
+            new Object[]{seg.nombre, totalAFlush,
+                         sesion != null ? sesion.segundosFocoAcumulado : "N/A"});
         return reg;
     }
 
@@ -285,10 +377,11 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             }
 
             if (Categoria.DISTRACCION.equals(seg.categoria)) {
-                long totalFoco = obtenerFocoAcumulado(clave) + seg.segundosAcumulados
-                               + Duration.between(seg.inicio, ahora).getSeconds();
+                // FIX FIX-2: Separación limpia histórico vs delta actual
+                // segundosAcumulados ya incluye el delta desde el último reset de inicio
+                // No sumar Duration.between(seg.inicio, ahora) porque seg.inicio fue reseteado arriba
+                long totalFoco = obtenerFocoAcumulado(clave) + seg.segundosAcumulados;
 
-                // DEBUG: log en cada ciclo para apps de distracción
                 LOGGER.log(Level.INFO,
                     "[DEBUG-NIVELES] app={0} totalFoco={1}s aviso={2}s bloqueo={3}s estado={4} killer={5}",
                     new Object[]{seg.nombre, totalFoco, segundosAviso, segundosBloqueo,
@@ -345,10 +438,10 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                 pendientes.add(encolarChunkExistencia(sesion, sesion.segundosBackgroundAcumulados, ahora));
             }
 
+            // FIX BUG-3: Usar flushFocoYActualizarHistorico() para flush + update histórico
             SeguimientoActividad seg = activas.get(clave);
             if (seg != null) {
-                Registro reg = prepararRegistroFocoPurge(seg, ahora);
-                if (reg != null) pendientes.add(reg);
+                flushFocoYActualizarHistorico(clave, seg, ahora, pendientes);
             }
 
             clavesAEliminar.add(clave);
@@ -363,13 +456,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             clavesAEliminar.forEach(nuevoMapa::remove);
             activasRef.set(nuevoMapa);
         }
-    }
-
-    private Registro prepararRegistroFocoPurge(SeguimientoActividad seg, LocalDateTime ahora) {
-        long segsFoco    = Duration.between(seg.inicio, ahora).getSeconds();
-        long totalAFlush = seg.segundosAcumulados + segsFoco;
-        if (totalAFlush <= 0) return null;
-        return encolarChunkFoco(seg, totalAFlush, ahora);
     }
 
     public void finalizar() {
@@ -388,9 +474,9 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             LocalDateTime ahora = LocalDateTime.now();
             Map<String, SeguimientoActividad> activas = activasRef.get();
 
+            // FIX BUG-3: flushFocoYActualizarHistorico() unificado para shutdown
             activas.forEach((clave, seg) -> {
-                Registro reg = prepararRegistroFocoPurge(seg, ahora);
-                if (reg != null) pendientes.add(reg);
+                flushFocoYActualizarHistorico(clave, seg, ahora, pendientes);
             });
 
             sesiones.values().stream()
@@ -461,7 +547,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     }
 
     private void cerrar(String clave, SeguimientoActividad seg) {
-        // DEBUG: log siempre que se intente cerrar
         LOGGER.log(Level.INFO,
             "[DEBUG-CERRAR] killer={0} clave={1} pid={2} tabId={3} startInstant={4}",
             new Object[]{killer != null ? "OK" : "NULL", clave, seg.pid, seg.tabId, seg.startInstant});

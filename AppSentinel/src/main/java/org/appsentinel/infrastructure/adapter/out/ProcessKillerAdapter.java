@@ -17,6 +17,13 @@ import java.util.logging.Logger;
  * - Protege SOLO: procesos críticos del SO + AppSentinel mismo + IDE que lanzó la JVM.
  * - Permite cerrar apps Java legítimas clasificadas como distracción (Minecraft, etc.).
  *
+ * FIX BUG-2: Protección de constructor contra fallos de ProcessHandle.
+ * - resolverPidPadreIde() envuelto en try-catch genérico.
+ * - Si ProcessHandle.parent() o info().command() fallan (SecurityException,
+ *   UnsupportedOperationException), el constructor sobrevive y el cierre
+ *   de distracciones sigue funcionando (sin protección de IDE, que es aceptable).
+ * - Log de warning para diagnóstico en entornos restrictivos.
+ *
  * PROTECCIÓN A.1 — Anti-PID-Recycling:
  * Windows reutiliza PIDs agresivamente. Entre el escaneo (10s) y la orden de
  * bloqueo (que puede demorar minutos en modo estricto con gracia), otro proceso
@@ -48,28 +55,38 @@ public class ProcessKillerAdapter implements KillerPort {
     /**
      * FIX WIN-01: Resuelve si AppSentinel fue lanzado desde un IDE.
      * Protege el IDE para que no se cierre accidentalmente al matar una distracción.
+     *
+     * FIX BUG-2: try-catch genérico que captura cualquier excepción de ProcessHandle.
+     * En Windows sin permisos elevados, ProcessHandle.parent() y info().command()
+     * pueden lanzar SecurityException. Si falla, loggear warning y retornar empty
+     * para que el constructor sobreviva y el cierre de distracciones funcione.
      */
     private Optional<Long> resolverPidPadreIde() {
-        Set<String> ides = Set.of("idea", "studio", "code", "netbeans", "eclipse");
-        Optional<ProcessHandle> actual = ProcessHandle.current().parent();
+        try {
+            Set<String> ides = Set.of("idea", "studio", "code", "netbeans", "eclipse");
+            Optional<ProcessHandle> actual = ProcessHandle.current().parent();
 
-        while (actual.isPresent()) {
-            ProcessHandle ph = actual.get();
-            // Evitamos fallos si el comando no es accesible por permisos del SO
-            String nombre = ph.info().command()
-                .map(this::extraerNombre)
-                .orElse("desconocido");
+            while (actual.isPresent()) {
+                ProcessHandle ph = actual.get();
+                // Evitamos fallos si el comando no es accesible por permisos del SO
+                String nombre = ph.info().command()
+                    .map(this::extraerNombre)
+                    .orElse("desconocido");
 
-            if (ides.contains(nombre)) {
-                LOGGER.log(Level.INFO, "[KILL] IDE detectado en cadena de lanzamiento: {0} (PID: {1})",
-                    new Object[]{nombre, ph.pid()});
-                return Optional.of(ph.pid());
+                if (ides.contains(nombre)) {
+                    LOGGER.log(Level.INFO, "[KILL] IDE detectado en cadena de lanzamiento: {0} (PID: {1})",
+                        new Object[]{nombre, ph.pid()});
+                    return Optional.of(ph.pid());
+                }
+
+                if (ph.pid() <= 0) break;
+                actual = ph.parent();
             }
-
-            if (ph.pid() <= 0) break;
-            actual = ph.parent();
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING,
+                "[KILL] No se pudo resolver cadena de padres (permisos insuficientes o no soportado): {0}",
+                e.getMessage());
         }
-
         return Optional.empty();
     }
 
@@ -190,7 +207,7 @@ public class ProcessKillerAdapter implements KillerPort {
         String sep = limpia.contains("\\") ? "\\" : "/";
         String[] partes = limpia.split(sep);
         if (partes.length == 0) return "desconocido";
-        
+
         String nombre = partes[partes.length - 1].toLowerCase();
         int punto = nombre.lastIndexOf('.');
         return punto > 0 ? nombre.substring(0, punto) : nombre;

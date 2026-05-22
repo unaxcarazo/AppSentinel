@@ -3,7 +3,7 @@
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.layout.Region?>
-<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.Button?>
 
@@ -11,7 +11,7 @@
             xmlns="http://javafx.com/javafx/25.0.2"
             fx:controller="org.appsentinel.infrastructure.adapter.in.gui.controller.MainController"
             prefWidth="1200" prefHeight="700"
-            style="-fx-background-color: #0d1117;">
+            style="-fx-background-color: #0d1117;"> 
 
     <left>
         <VBox prefWidth="220" spacing="10" style="-fx-padding: 25 15 25 15; -fx-background-color: #0d1117;">
@@ -58,8 +58,8 @@
     </left>
 
     <center>
-        <AnchorPane fx:id="contenedor" style="-fx-background-color: #0d1117;">
-        </AnchorPane>
+        <StackPane fx:id="contenedor" style="-fx-background-color: #0d1117;">
+        </StackPane>
     </center>
 
 </BorderPane>

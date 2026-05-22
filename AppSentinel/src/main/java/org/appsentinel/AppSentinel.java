@@ -26,9 +26,6 @@ public class AppSentinel extends Application {
     public void start(Stage primaryStage) throws Exception {
         LOGGER.log(Level.INFO, "[APP] Iniciando AppSentinel...");
 
-        // Evitar que JavaFX cierre la JVM automáticamente antes del shutdown graceful
-        Platform.setImplicitExit(false);
-
         // 🚀 CONEXIÓN DEL GRAFO: Capturamos el AppContext devuelto por el método construir()
         AppContext ctx = AppWiring.construir();
 
@@ -47,9 +44,9 @@ public class AppSentinel extends Application {
         }
 
         // Definición de las dimensiones de la ventana principal
-        Scene scene = new Scene(root, 1200, 800);
+        Scene scene = new Scene(root);
         scene.getStylesheets().add(getClass().getResource("/styles/usagehistory.css").toExternalForm());
-
+        primaryStage.initStyle(javafx.stage.StageStyle.DECORATED);
         primaryStage.setTitle("AppSentinel — Productividad consciente");
         primaryStage.setScene(scene);
 
@@ -58,6 +55,9 @@ public class AppSentinel extends Application {
             LOGGER.log(Level.INFO, "[APP] Evento de cierre de ventana detectado.");
             Platform.exit();
         });
+        
+        // Evitar que JavaFX cierre la JVM automáticamente antes del shutdown graceful
+        Platform.setImplicitExit(false);
 
         primaryStage.show();
         LOGGER.log(Level.INFO, "[APP] AppSentinel iniciado correctamente.");

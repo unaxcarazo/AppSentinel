@@ -25,12 +25,16 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 
-import org.appsentinel.domain.model.ProcesoInfo;
-import org.appsentinel.domain.model.SystemMetrics;
 import org.appsentinel.domain.port.out.RendimientoSistemaPort;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
+import oshi.SystemInfo;
+import oshi.software.os.OSProcess;
+import oshi.software.os.OperatingSystem;
 
 public class PerformanceController implements Initializable, Controllable {
+
+    @FXML
+    private TableView<OSProcess> tablaProcesos; // Vinculado al fx:id de tu archivo FXML
 
     @FXML
     private Label lblCpuLoad;
@@ -60,20 +64,20 @@ public class PerformanceController implements Initializable, Controllable {
     @FXML
     private TextField txtSearchProcess;
 
+    // 🚀 Cambiados de ProcesoInfo a OSProcess nativo de OSHI
     @FXML
-    private TableView<ProcesoInfo> tableProcesses;
+    private TableColumn<OSProcess, String> colName;
     @FXML
-    private TableColumn<ProcesoInfo, String> colName;
+    private TableColumn<OSProcess, String> colCategory;
     @FXML
-    private TableColumn<ProcesoInfo, String> colCategory;
+    private TableColumn<OSProcess, Double> colCpu;
     @FXML
-    private TableColumn<ProcesoInfo, Double> colCpu;
+    private TableColumn<OSProcess, Double> colRam;
     @FXML
-    private TableColumn<ProcesoInfo, Double> colRam;
-    @FXML
-    private TableColumn<ProcesoInfo, Long> colTime;
+    private TableColumn<OSProcess, Long> colTime;
 
     private RendimientoSistemaPort rendimientoService;
+    private OperatingSystem osNativo; // Para obtener el snapshot de procesos de forma segura en la UI
     private Timer timer;
     private XYChart.Series<Number, Number> rxSeries;
     private XYChart.Series<Number, Number> txSeries;
@@ -82,6 +86,12 @@ public class PerformanceController implements Initializable, Controllable {
     @Override
     public void init(AppContext ctx) {
         this.rendimientoService = ctx.rendimiento();
+        // Inicializamos el acceso al OS de manera local para la vista sin romper el puerto del dominio
+        try {
+            this.osNativo = new SystemInfo().getOperatingSystem();
+        } catch (Exception e) {
+            System.err.println("[UI] No se pudo inicializar el acceso nativo a OS en el controlador: " + e.getMessage());
+        }
         Platform.runLater(this::startRepeatingUpdate);
     }
 
@@ -102,11 +112,27 @@ public class PerformanceController implements Initializable, Controllable {
     }
 
     private void setupTable() {
-        colName.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().nombre()));
-        colCategory.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().status()));
-        colCpu.setCellValueFactory(cd -> new SimpleDoubleProperty(cd.getValue().cpuUsage()).asObject());
-        colRam.setCellValueFactory(cd -> new SimpleDoubleProperty(cd.getValue().memoryUsage()).asObject());
-        colTime.setCellValueFactory(cd -> new SimpleLongProperty(cd.getValue().upTime()).asObject());
+        // 🚀 Mapeo directo a las propiedades y getters nativos de OSProcess
+        colName.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getName()));
+        colCategory.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getState().name()));
+        
+        // OSHI devuelve valores acumulativos u orientados a fracciones. Formateamos a porcentaje (0.0 - 100.0)
+        colCpu.setCellValueFactory(cd -> {
+            double cpu = cd.getValue().getProcessCpuLoadCumulative() * 100.0;
+            return new SimpleDoubleProperty(Double.isNaN(cpu) ? 0.0 : cpu).asObject();
+        });
+        
+        colRam.setCellValueFactory(cd -> {
+            if (rendimientoService == null || rendimientoService.getRamTotalMb() == 0) {
+                return new SimpleDoubleProperty(0.0).asObject();
+            }
+            // Pasamos los Resident Set Size (bytes ocupados en RAM física) a porcentaje del total del sistema
+            double totalBytes = rendimientoService.getRamTotalMb() * 1024.0 * 1024.0;
+            double porcentajeRam = (cd.getValue().getResidentSetSize() / totalBytes) * 100.0;
+            return new SimpleDoubleProperty(porcentajeRam).asObject();
+        });
+        
+        colTime.setCellValueFactory(cd -> new SimpleLongProperty(cd.getValue().getUpTime()).asObject());
 
         colTime.setCellFactory(col -> new TiempoActivoCell());
         colCategory.setCellFactory(col -> new CategoriaBadgeCell());
@@ -146,6 +172,20 @@ public class PerformanceController implements Initializable, Controllable {
         lblRamTotal.setText(String.format("%.1f GB Total", ramTotalGb));
         progressRam.setProgress(ramPorcentaje / 100.0);
 
+        // 🚀 Carga de procesos nativos en la tabla de forma segura usando OSHI directamente
+        if (osNativo != null && tablaProcesos != null) {
+            try {
+                List<OSProcess> procesos = osNativo.getProcesses(
+                    OperatingSystem.ProcessFiltering.VALID_PROCESS, 
+                    OperatingSystem.ProcessSorting.CPU_DESC, 
+                    15
+                );
+                tablaProcesos.setItems(FXCollections.observableArrayList(procesos));
+            } catch (Exception e) {
+                System.err.println("[UI] Error al actualizar la tabla de procesos: " + e.getMessage());
+            }
+        }
+
         lblNetDown.setText("0.0 MB/s ⬇");
         lblNetUp.setText("0.0 MB/s ⬆");
 
@@ -158,16 +198,18 @@ public class PerformanceController implements Initializable, Controllable {
         xTick++;
     }
 
-    public void stop() {
+    // 🚀 CORREGIDO: Cambiado de stop() a shutdown() para cumplir estrictamente con la interfaz Controllable
+    @Override
+    public void shutdown() {
         if (timer != null) {
             timer.cancel();
         }
     }
 
     // =========================================================================
-    // CLASES DE SOPORTE PARA CELDAS
+    // CLASES DE SOPORTE PARA CELDAS ADAPTADAS A OSPROCESS
     // =========================================================================
-    private static class TiempoActivoCell extends javafx.scene.control.TableCell<ProcesoInfo, Long> {
+    private static class TiempoActivoCell extends javafx.scene.control.TableCell<OSProcess, Long> {
 
         @Override
         protected void updateItem(Long item, boolean empty) {
@@ -190,7 +232,7 @@ public class PerformanceController implements Initializable, Controllable {
         }
     }
 
-    private static class CategoriaBadgeCell extends javafx.scene.control.TableCell<ProcesoInfo, String> {
+    private static class CategoriaBadgeCell extends javafx.scene.control.TableCell<OSProcess, String> {
 
         @Override
         protected void updateItem(String item, boolean empty) {
@@ -200,7 +242,8 @@ public class PerformanceController implements Initializable, Controllable {
                 setText(null);
             } else {
                 Label badge = new Label(item);
-                if (item.equalsIgnoreCase("RUNNING") || item.equalsIgnoreCase("WORK")) {
+                // Ajustado para evaluar los estados del enum nativo de OSHI (RUNNING, SLEEPING, WAITING, etc.)
+                if (item.equalsIgnoreCase("RUNNING")) {
                     badge.getStyleClass().add("badge-work");
                 } else {
                     badge.getStyleClass().add("badge-distraction");
@@ -211,7 +254,7 @@ public class PerformanceController implements Initializable, Controllable {
         }
     }
 
-    private static class ProgressBarCell extends javafx.scene.control.TableCell<ProcesoInfo, Double> {
+    private static class ProgressBarCell extends javafx.scene.control.TableCell<OSProcess, Double> {
 
         private final HBox container = new HBox(8);
         private final Label text = new Label();
@@ -221,7 +264,7 @@ public class PerformanceController implements Initializable, Controllable {
             bar.getStyleClass().addAll("micro-bar", barClass);
             bar.setPrefWidth(80);
 
-            // 🌟 ELIMINADO EL INLINE STYLE DE AQUÍ PARA PASAR EL CONTROL TOTAL AL CSS vuestro
+            // 🌟 SE MANTIENE EL INLINE STYLE ELIMINADO PARA PASAR EL CONTROL TOTAL AL CSS VUESTRO
             text.setPrefWidth(45);
 
             container.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
@@ -235,18 +278,22 @@ public class PerformanceController implements Initializable, Controllable {
                 setGraphic(null);
                 setText(null);
             } else {
-                ProcesoInfo p = getTableRow() != null ? getTableRow().getItem() : null;
+                OSProcess p = getTableRow() != null ? getTableRow().getItem() : null;
 
                 bar.getStyleClass().removeAll("micro-bar-cyan", "micro-bar-orange");
 
-                if (p != null && p.status() != null
-                        && (p.status().equalsIgnoreCase("RUNNING") || p.status().equalsIgnoreCase("WORK"))) {
+                if (p != null && p.getState() != null && p.getState().name().equalsIgnoreCase("RUNNING")) {
                     bar.getStyleClass().add("micro-bar-cyan");
                 } else {
                     bar.getStyleClass().add("micro-bar-orange");
                 }
 
+                // Normalizar valor para la ProgressBar de JavaFX (acepta de 0.0 a 1.0)
+                double progresoFraccion = item / 100.0;
+                bar.setProgress(Math.min(1.0, Math.max(0.0, progresoFraccion)));
+                
                 text.setText(String.format("%.1f%%", item));
+                setGraphic(container);
             }
         }
     }

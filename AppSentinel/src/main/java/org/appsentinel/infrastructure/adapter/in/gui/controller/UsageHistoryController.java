@@ -18,16 +18,20 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import javafx.application.Platform;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
 
 public class UsageHistoryController implements Controllable {
 
     private RegistroRepositoryPort registroRepository;
+    private List<Registro> listaCompletaMaster;
 
-    public UsageHistoryController() {
-        // Constructor vacío para inyección diferida
-    }
+    // Scheduler de UI definido como propiedad de la clase
+    private ScheduledExecutorService uiScheduler;
 
     @FXML
     private TextField txtSearch;
@@ -36,7 +40,12 @@ public class UsageHistoryController implements Controllable {
     @FXML
     private VBox vboxTableRows;
 
-    private List<Registro> listaCompletaMaster;
+    private volatile long ultimaActualizacionUi = 0;
+    private static final long MIN_MS_ENTRE_ACTUALIZACIONES = 2000; // 2 segundos
+
+    public UsageHistoryController() {
+        // Constructor vacío para inyección diferida
+    }
 
     @FXML
     public void initialize() {
@@ -174,5 +183,51 @@ public class UsageHistoryController implements Controllable {
         this.listaCompletaMaster = registroRepository.obtenerHistorialCompleto();
         actualizarTabla(this.listaCompletaMaster);
         System.out.println("⏳ UsageHistory cargado con éxito en el ecosistema del grupo usando AppContext.");
+
+        // 🚀 ARRANQUE SEGURO: El planificador se inicializa y se arranca aquí de forma controlada
+        if (uiScheduler == null || uiScheduler.isShutdown()) {
+            uiScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "UsageHistory-UI-Scheduler");
+                t.setDaemon(true); // Evita colgar la JVM al cerrar la app
+                return t;
+            });
+
+            uiScheduler.scheduleAtFixedRate(() -> {
+                actualizarVistaSegura();
+            }, 5, 5, TimeUnit.SECONDS);
+        }
+    }
+
+    private void actualizarVistaSegura() {
+        long ahora = System.currentTimeMillis();
+        if (ahora - ultimaActualizacionUi < MIN_MS_ENTRE_ACTUALIZACIONES) {
+            return; // Ignorar si la actualización fue muy reciente
+        }
+        ultimaActualizacionUi = ahora;
+
+        Platform.runLater(() -> {
+            recargarDatosDesdeBd();
+        });
+    }
+
+    private void recargarDatosDesdeBd() {
+        if (registroRepository != null) {
+            System.out.println("Cargando información optimizada desde la base de datos...");
+            this.listaCompletaMaster = registroRepository.obtenerHistorialCompleto();
+            aplicarFiltrosCombinados(); // Refresca visualmente la interfaz respetando la búsqueda actual
+        }
+    }
+
+    // 🚀 REQUERIMIENTO COMPROBADO Y ADAPTADO: Detiene el planificador para evitar hilos basura
+    public void detenerPlanificador() {
+        if (uiScheduler != null && !uiScheduler.isShutdown()) {
+            uiScheduler.shutdown();
+        }
+    }
+
+    // 🚀 CICLO DE VIDA CONTROLLABLE: Asegura que al cambiar de pantalla se ejecute la desconexión
+    @Override
+    public void shutdown() {
+        detenerPlanificador();
     }
 }

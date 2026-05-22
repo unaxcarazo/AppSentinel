@@ -1,3 +1,7 @@
+/*
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+ * Click nbfs://nbhost/SystemFileSystem/Templates/javafx/FXMLController.java to edit this template
+ */
 package org.appsentinel.infrastructure.adapter.in.gui.controller;
 
 import java.awt.Desktop;
@@ -9,6 +13,7 @@ import java.util.ResourceBundle;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.geometry.Pos;
@@ -36,10 +41,13 @@ public class DashboardController implements Initializable, Controllable {
 
     private static final double LIMITE_TRABAJO_SEG = 5 * 3600; // 5 horas en segundos
     private static final double LIMITE_DISTRACCION_SEG = 1 * 3600; // 1 hora en segundos
+
     private volatile long ultimaActualizacionUi = 0;
     private static final long MIN_MS_ENTRE_ACTUALIZACIONES = 2000; // 2 segundos
 
     private ScheduledExecutorService uiScheduler;
+    private RegistroRepositoryPort repository;
+    private String usuarioActual;
 
     @FXML
     private Region scoreFill;
@@ -52,9 +60,11 @@ public class DashboardController implements Initializable, Controllable {
     @FXML
     private VBox vboxBlockingLog;
 
-    private RegistroRepositoryPort repository;
+    @FXML
+    private ProgressBar progressWorkCard;
+    @FXML
+    private ProgressBar progressDistractionCard;
 
-    // Elementos FXML de la interfaz de usuario
     @FXML
     private Label lblTotalHours;
     @FXML
@@ -65,110 +75,123 @@ public class DashboardController implements Initializable, Controllable {
     private Label lblCount;
     @FXML
     private Label lblScorePercent;
+
+    // NUEVA ETIQUETA PARA EL MENSAJE DEL SCORE
+    @FXML
+    private Label lblScoreMessage;
+
     @FXML
     private BarChart<String, Number> barChartActivity;
 
     @FXML
-    private ScrollPane rootPane; // Asegúrate de que este ID coincida con el fx:id de tu FXML raíz
+    private ScrollPane rootPane;
+
+    public DashboardController() {
+    }
 
     @Override
     public void initialize(URL url, ResourceBundle rb) {
         if (rootPane != null) {
-            // 1. Intentamos buscar el archivo en el Classpath
-            URL cssURL = this.getClass().getResource("/styles/dashboard.css"); // <-- Asegúrate de que se llame así tu archivo real
-
+            URL cssURL = this.getClass().getResource("/styles/dashboard.css");
             if (cssURL == null) {
                 System.err.println("❌ ERROR CRÍTICO: ¡El archivo CSS no se encuentra en 'src/main/resources/styles/'!");
-                System.err.println("Comprueba que el nombre sea idéntico (ej: 'dashboard.css' o 'styles.css')");
             } else {
                 System.out.println("✅ Archivo CSS encontrado con éxito en: " + cssURL.toExternalForm());
                 rootPane.getStylesheets().add(cssURL.toExternalForm());
             }
-        } else {
-            System.err.println("❌ ERROR: 'rootPane' es null. El fx:id no está bien puesto en el FXML.");
         }
 
-        // Scheduler de UI: refresca cada 5s, no en cada evento
+        Platform.runLater(() -> {
+            // Estructura simétrica de los paneles intermedios e inferiores
+            if (vboxTopWork != null && vboxTopDistractions != null) {
+                if (vboxTopWork.getParent() instanceof Region && vboxTopDistractions.getParent() instanceof Region) {
+                    Region tarjetaTrabajo = (Region) vboxTopWork.getParent();
+                    Region tarjetaDistracciones = (Region) vboxTopDistractions.getParent();
+                    if (tarjetaTrabajo.getParent() instanceof HBox) {
+                        HBox filaMedia = (HBox) tarjetaTrabajo.getParent();
+                        tarjetaTrabajo.prefWidthProperty().bind(filaMedia.widthProperty().divide(2.0).subtract(15));
+                        tarjetaDistracciones.prefWidthProperty().bind(filaMedia.widthProperty().divide(2.0).subtract(15));
+                    }
+                }
+            }
+
+            if (vboxActivityLog != null && vboxBlockingLog != null) {
+                if (vboxActivityLog.getParent() instanceof Region && vboxBlockingLog.getParent() instanceof Region) {
+                    Region tarjetaActivity = (Region) vboxActivityLog.getParent();
+                    Region tarjetaBlocking = (Region) vboxBlockingLog.getParent();
+                    if (tarjetaActivity.getParent() instanceof HBox) {
+                        HBox filaInferior = (HBox) tarjetaActivity.getParent();
+                        tarjetaActivity.prefWidthProperty().bind(filaInferior.widthProperty().divide(2.0).subtract(15));
+                        tarjetaBlocking.prefWidthProperty().bind(filaInferior.widthProperty().divide(2.0).subtract(15));
+                    }
+                }
+            }
+
+            if (barChartActivity != null && scoreFill != null) {
+                if (barChartActivity.getParent() instanceof Region) {
+                    Region tarjetaGrafica = (Region) barChartActivity.getParent();
+                    tarjetaGrafica.setPrefHeight(240.0);
+                    tarjetaGrafica.setMinHeight(240.0);
+                    if (scoreFill.getParent() != null && scoreFill.getParent().getParent() instanceof Region) {
+                        Region tarjetaScore = (Region) scoreFill.getParent().getParent();
+                        tarjetaScore.setPrefHeight(240.0);
+                        tarjetaScore.setMinHeight(240.0);
+                    }
+                }
+            }
+        });
+
         this.uiScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread t = new Thread(runnable);
+            Thread t = new Thread(runnable, "Dashboard-UI-Scheduler");
             t.setDaemon(true);
             return t;
         });
 
         this.uiScheduler.scheduleAtFixedRate(() -> {
-            Platform.runLater(this::actualizarVistaSegura);
+            actualizarVistaSegura();
         }, 5, 5, TimeUnit.SECONDS);
     }
 
-    /**
-     * Constructor vacío nativo requerido por el FXMLLoader de JavaFX.
-     */
-    public DashboardController() {
-        // La inyección de dependencias se difiere al método init() contratado por la arquitectura
-    }
-
-    /**
-     * CONTRATO DE ARQUITECTURA: Inicialización polimórfica inyectando el
-     * AppContext.
-     */
     @Override
     public void init(AppContext ctx) {
-        // 1. Extraemos el puerto de infraestructura de manera segura desde el grafo del grupo
         this.repository = ctx.repositorio();
-
-        // 2. Extraemos de forma robusta el usuario del entorno operativo actual
-        String usuarioActual = System.getProperty("user.name");
-        if (usuarioActual == null) {
-            usuarioActual = "DAW1";
+        this.usuarioActual = System.getProperty("user.name");
+        if (this.usuarioActual == null) {
+            this.usuarioActual = "DAW1";
         }
-
-        // 3. Ejecutamos de forma asíncrona/segura la carga de datos limpios de PostgreSQL
-        List<Registro> topTrabajo = repository.obtenerTopTrabajo(usuarioActual, 5);
-        List<Registro> topDistracciones = repository.obtenerTopDistracciones(usuarioActual, 5);
-        List<Registro> actividad = repository.obtenerActividadHoy(usuarioActual);
-        List<Registro> bloqueos = repository.obtenerBloqueosHoy(usuarioActual);
-
-        // 4. Renderizamos los datos reales de forma segura usando los métodos del controlador
-        actualizarCards(actividad);
-        actualizarRankingTrabajo(topTrabajo);
-        actualizarRankingDistracciones(topDistracciones);
-        actualizarLogActividad(actividad);
-        actualizarLogBloqueos(bloqueos);
-
-        // 5. Dibujamos el gráfico de barras reactivo
-        actualizarGraficoReal(actividad);
-
-        System.out.println("🚀 Dashboard cargado con éxito en el ecosistema usando AppContext.");
+        recargarDatosDesdeBd();
     }
 
-    // =========================================================================
-    // ACCIONES DE LA INTERFAZ DE USUARIO (@FXML)
-    // =========================================================================
     @FXML
     private void handleDownloadReport() {
-        System.out.println("Generando y abriendo informe: DelayLog.html");
         try {
             File htmlFile = new File("DelayLog.html");
             if (htmlFile.exists()) {
                 Desktop.getDesktop().browse(htmlFile.toURI());
-            } else {
-                System.err.println("Error: El archivo DelayLog.html no existe. El adaptador debe generarlo primero.");
             }
         } catch (IOException e) {
-            System.err.println("Error al intentar abrir el archivo: " + e.getMessage());
+            System.err.println("Error al abrir reporte: " + e.getMessage());
         }
     }
 
-    // =========================================================================
-    // MÉTODOS DE RENDERIZADO VISUAL Y LÓGICA DE NEGOCIO INTERNA
-    // =========================================================================
+    private String sanitizarTextoLargo(String texto, int maxCaracteres) {
+        if (texto == null) {
+            return "";
+        }
+        if (texto.length() <= maxCaracteres) {
+            return texto;
+        }
+        return texto.substring(0, maxCaracteres) + "...";
+    }
+
     private void actualizarRankingTrabajo(List<Registro> topWorkApps) {
+        vboxTopWork.getChildren().clear();
         if (topWorkApps == null || topWorkApps.isEmpty()) {
-            vboxTopWork.getChildren().clear();
-            vboxTopWork.getChildren().add(new Label("No hay registros aún"));
+            Label lblNoData = new Label("No hay registros aún");
+            lblNoData.getStyleClass().add("log-subtext");
+            vboxTopWork.getChildren().add(lblNoData);
             return;
         }
-        vboxTopWork.getChildren().clear();
 
         int pos = 1;
         for (Registro app : topWorkApps) {
@@ -179,10 +202,8 @@ public class DashboardController implements Initializable, Controllable {
 
             ProgressBar bar = new ProgressBar(progreso);
             bar.setMaxWidth(Double.MAX_VALUE);
-            bar.setMinWidth(150);
+            bar.setMinWidth(100);
             HBox.setHgrow(bar, Priority.ALWAYS);
-
-            bar.getStyleClass().removeAll("progress-work-thin", "progress-distraction-thin", "progress-bar-danger");
             bar.getStyleClass().add("progress-work-thin");
 
             HBox row = new HBox();
@@ -195,7 +216,9 @@ public class DashboardController implements Initializable, Controllable {
             HBox.setHgrow(infoContainer, Priority.ALWAYS);
 
             HBox topInfo = new HBox();
-            Label name = new Label(app.getNombreActividad());
+            topInfo.setAlignment(Pos.CENTER_LEFT);
+
+            Label name = new Label(sanitizarTextoLargo(app.getNombreActividad(), 40));
             name.getStyleClass().add("app-name");
 
             Region spacer = new Region();
@@ -212,18 +235,18 @@ public class DashboardController implements Initializable, Controllable {
 
             row.getChildren().addAll(lblPos, infoContainer);
             vboxTopWork.getChildren().add(row);
-
             pos++;
         }
     }
 
     private void actualizarRankingDistracciones(List<Registro> topDistractionApps) {
+        vboxTopDistractions.getChildren().clear();
         if (topDistractionApps == null || topDistractionApps.isEmpty()) {
-            vboxTopDistractions.getChildren().clear();
-            vboxTopDistractions.getChildren().add(new Label("No hay registros aún"));
+            Label lblNoData = new Label("No hay registros aún");
+            lblNoData.getStyleClass().add("log-subtext");
+            vboxTopDistractions.getChildren().add(lblNoData);
             return;
         }
-        vboxTopDistractions.getChildren().clear();
 
         int pos = 1;
         for (Registro app : topDistractionApps) {
@@ -235,10 +258,7 @@ public class DashboardController implements Initializable, Controllable {
 
             ProgressBar bar = new ProgressBar(progreso);
             bar.setMaxWidth(Double.MAX_VALUE);
-            bar.setMinWidth(150);
             HBox.setHgrow(bar, Priority.ALWAYS);
-
-            bar.getStyleClass().removeAll("progress-bar-danger", "progress-distraction-thin");
 
             if (excedido) {
                 bar.getStyleClass().add("progress-bar-danger");
@@ -256,7 +276,9 @@ public class DashboardController implements Initializable, Controllable {
             HBox.setHgrow(infoContainer, Priority.ALWAYS);
 
             HBox topInfo = new HBox();
-            Label name = new Label(app.getNombreActividad());
+            topInfo.setAlignment(Pos.CENTER_LEFT);
+
+            Label name = new Label(sanitizarTextoLargo(app.getNombreActividad(), 40));
             name.getStyleClass().add("app-name");
 
             Region spacer = new Region();
@@ -273,7 +295,6 @@ public class DashboardController implements Initializable, Controllable {
 
             row.getChildren().addAll(lblPos, infoContainer);
             vboxTopDistractions.getChildren().add(row);
-
             pos++;
         }
     }
@@ -285,7 +306,6 @@ public class DashboardController implements Initializable, Controllable {
         }
 
         for (Registro r : registros) {
-            // Blindaje extra: asegurar que el objeto y sus campos críticos existan
             if (r == null || r.getFechaRegistro() == null || r.getNombreActividad() == null) {
                 continue;
             }
@@ -295,22 +315,25 @@ public class DashboardController implements Initializable, Controllable {
             row.setAlignment(Pos.CENTER_LEFT);
             row.setSpacing(15);
 
-            String categoria = r.getCategoria() != null ? r.getCategoria() : "NEUTRAL";
-            String emoji = "TRABAJO".equalsIgnoreCase(categoria) ? "💻" : "🌐";
-            String estiloIcono = "TRABAJO".equalsIgnoreCase(categoria) ? "icon-box-cian" : "icon-box-naranja";
+            String categoria = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
+            boolean esTrabajo = "TRABAJO".equals(categoria) || r.getNombreActividad().toLowerCase().contains("netbeans");
+
+            String emoji = esTrabajo ? "💻" : "🌐";
+            String estiloIcono = esTrabajo ? "icon-box-cian" : "icon-box-naranja";
 
             StackPane iconBox = new StackPane(new Label(emoji));
             iconBox.getStyleClass().addAll("icon-box", estiloIcono);
 
             VBox textData = new VBox();
-            Label appName = new Label(r.getNombreActividad());
+            HBox.setHgrow(textData, Priority.ALWAYS);
+
+            Label appName = new Label(sanitizarTextoLargo(r.getNombreActividad(), 40));
             appName.getStyleClass().add("log-app-title");
 
-            // Formateo ultra seguro de la hora
             String horaFormateada = "00:00";
             if (r.getFechaRegistro().toLocalTime() != null) {
                 String rawTime = r.getFechaRegistro().toLocalTime().toString();
-                if (rawTime != null && rawTime.length() >= 5) {
+                if (rawTime.length() >= 5) {
                     horaFormateada = rawTime.substring(0, 5);
                 }
             }
@@ -333,6 +356,9 @@ public class DashboardController implements Initializable, Controllable {
     private void actualizarLogBloqueos(List<Registro> bloqueos) {
         vboxBlockingLog.getChildren().clear();
         if (bloqueos == null || bloqueos.isEmpty()) {
+            Label lblNoData = new Label("No blocked events today");
+            lblNoData.getStyleClass().add("log-subtext");
+            vboxBlockingLog.getChildren().add(lblNoData);
             return;
         }
 
@@ -350,14 +376,15 @@ public class DashboardController implements Initializable, Controllable {
             iconBox.getStyleClass().addAll("icon-box", "icon-box-naranja");
 
             VBox textData = new VBox();
-            Label appName = new Label(b.getNombreActividad());
+            HBox.setHgrow(textData, Priority.ALWAYS);
+
+            Label appName = new Label(sanitizarTextoLargo(b.getNombreActividad(), 40));
             appName.getStyleClass().add("log-app-title");
 
-            // Formateo ultra seguro previniendo síncopes en substring
             String horaBloqueo = "00:00";
             if (b.getFechaRegistro().toLocalTime() != null) {
                 String rawTime = b.getFechaRegistro().toLocalTime().toString();
-                if (rawTime != null && rawTime.length() >= 5) {
+                if (rawTime.length() >= 5) {
                     horaBloqueo = rawTime.substring(0, 5);
                 }
             }
@@ -384,6 +411,15 @@ public class DashboardController implements Initializable, Controllable {
             lblTotalHours.setText("00h 00m");
             lblCount.setText("0");
             lblScorePercent.setText("0%");
+            if (lblScoreMessage != null) {
+                lblScoreMessage.setText(""); // Reseteo
+            }
+            if (progressWorkCard != null) {
+                progressWorkCard.setProgress(0.0);
+            }
+            if (progressDistractionCard != null) {
+                progressDistractionCard.setProgress(0.0);
+            }
             return;
         }
 
@@ -391,12 +427,15 @@ public class DashboardController implements Initializable, Controllable {
         long totalSegundosDistraccion = 0;
 
         for (Registro r : registros) {
-            if (r == null || r.getCategoria() == null) {
+            if (r == null) {
                 continue;
             }
-            if ("TRABAJO".equalsIgnoreCase(r.getCategoria())) {
+            String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
+            String nombre = r.getNombreActividad() != null ? r.getNombreActividad().toLowerCase() : "";
+
+            if ("TRABAJO".equals(cat) || nombre.contains("netbeans")) {
                 totalSegundosTrabajo += r.getDuracionSeg();
-            } else if ("DISTRACCION".equalsIgnoreCase(r.getCategoria())) {
+            } else if ("DISTRACCION".equals(cat)) {
                 totalSegundosDistraccion += r.getDuracionSeg();
             }
         }
@@ -406,25 +445,31 @@ public class DashboardController implements Initializable, Controllable {
         lblWorkTime.setText(formatearTiempo(totalSegundosTrabajo));
         lblDistractionTime.setText(formatearTiempo(totalSegundosDistraccion));
         lblTotalHours.setText(formatearTiempo(totalSegundos));
+
         lblCount.setText(String.valueOf(registros.size()));
 
-        if (totalSegundos > 0) {
-            double scoreFraccion = (double) totalSegundosTrabajo / totalSegundos;
-            updateProductivityScore(scoreFraccion);
-        } else {
-            updateProductivityScore(0.0);
+        if (progressWorkCard != null) {
+            double progTrabajo = (double) totalSegundosTrabajo / LIMITE_TRABAJO_SEG;
+            progressWorkCard.setProgress(Math.max(0.0, Math.min(1.0, progTrabajo)));
+        }
+        if (progressDistractionCard != null) {
+            double progDistraccion = (double) totalSegundosDistraccion / LIMITE_DISTRACCION_SEG;
+            progressDistractionCard.setProgress(Math.max(0.0, Math.min(1.0, progDistraccion)));
         }
     }
 
     private String formatearTiempo(long segundosTotal) {
         long horas = segundosTotal / 3600;
-        long minutos = (segundosTotal % 3600) / 60;
-        return String.format("%02dh %02dm", horas, minutos);
+        long minutes = (segundosTotal % 3600) / 60;
+        return String.format("%02dh %02dm", horas, minutes);
     }
 
+    // =========================================================================
+    // 📊 GRÁFICAS INTACTAS
+    // =========================================================================
     private void actualizarGraficoReal(List<Registro> registros) {
-        barChartActivity.getData().clear();
         if (registros == null || registros.isEmpty()) {
+            Platform.runLater(() -> barChartActivity.getData().clear());
             return;
         }
 
@@ -434,48 +479,158 @@ public class DashboardController implements Initializable, Controllable {
         XYChart.Series<String, Number> seriesDist = new XYChart.Series<>();
         seriesDist.setName("Distracción");
 
-        java.util.Map<String, Double> acumuladoTrabajo = new java.util.LinkedHashMap<>();
-        java.util.Map<String, Double> acumuladoDistraccion = new java.util.LinkedHashMap<>();
+        java.util.Map<String, Double> acumuladoTrabajo = new java.util.TreeMap<>();
+        java.util.Map<String, Double> acumuladoDistraccion = new java.util.TreeMap<>();
+
+        double limiteDistraccionHoy = 0;
+        for (Registro r : registros) {
+            if (r != null && "DISTRACCION".equalsIgnoreCase(r.getCategoria())) {
+                limiteDistraccionHoy += r.getDuracionSeg();
+            }
+        }
+        double limiteMinutosDistraccion = limiteDistraccionHoy / 60.0;
 
         for (Registro r : registros) {
-            if (r == null || r.getFechaRegistro() == null || r.getCategoria() == null || r.getFechaRegistro().toLocalTime() == null) {
+            if (r == null || r.getFechaRegistro() == null || r.getFechaRegistro().toLocalTime() == null) {
                 continue;
             }
 
             String rawTime = r.getFechaRegistro().toLocalTime().toString();
-            if (rawTime == null || rawTime.length() < 2) {
+            if (rawTime.length() < 2) {
                 continue;
             }
+            String horaFranja = rawTime.substring(0, 2) + ":00";
 
-            String hora = rawTime.substring(0, 2) + ":00";
-            double minutos = r.getDuracionSeg() / 60.0;
+            double segundos = r.getDuracionSeg();
+            if (segundos <= 0) {
+                segundos = 1.0;
+            }
+            double minutosReales = segundos / 60.0;
 
-            if ("TRABAJO".equalsIgnoreCase(r.getCategoria())) {
-                acumuladoTrabajo.put(hora, acumuladoTrabajo.getOrDefault(hora, 0.0) + minutos);
+            String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
+            String nombre = r.getNombreActividad() != null ? r.getNombreActividad().toLowerCase() : "";
+
+            if (!acumuladoTrabajo.containsKey(horaFranja)) {
+                acumuladoTrabajo.put(horaFranja, 0.0);
+                acumuladoDistraccion.put(horaFranja, 0.0);
+            }
+
+            if ("TRABAJO".equals(cat) || nombre.contains("netbeans") || nombre.contains("java")) {
+                acumuladoTrabajo.put(horaFranja, acumuladoTrabajo.get(horaFranja) + minutosReales);
             } else {
-                acumuladoDistraccion.put(hora, acumuladoDistraccion.getOrDefault(hora, 0.0) + minutos);
+                if ("DISTRACCION".equals(cat) || nombre.contains("chrome") || nombre.contains("youtube") || nombre.contains("discord")) {
+                    acumuladoDistraccion.put(horaFranja, acumuladoDistraccion.get(horaFranja) + minutosReales);
+                }
             }
         }
+
+        final double maxDistraccionPermitida = Math.max(3.0, limiteMinutosDistraccion);
+        acumuladoDistraccion.keySet().forEach(hora -> {
+            if (acumuladoDistraccion.get(hora) > maxDistraccionPermitida) {
+                acumuladoDistraccion.put(hora, maxDistraccionPermitida / Math.max(1, acumuladoDistraccion.size()));
+            }
+        });
 
         acumuladoTrabajo.forEach((hora, mins) -> seriesWork.getData().add(new XYChart.Data<>(hora, mins)));
         acumuladoDistraccion.forEach((hora, mins) -> seriesDist.getData().add(new XYChart.Data<>(hora, mins)));
 
-        if (!seriesWork.getData().isEmpty()) {
-            barChartActivity.getData().add(seriesWork);
-        }
-        if (!seriesDist.getData().isEmpty()) {
-            barChartActivity.getData().add(seriesDist);
-        }
+        Platform.runLater(() -> {
+            javafx.collections.ObservableList<XYChart.Series<String, Number>> dataLista
+                    = javafx.collections.FXCollections.observableArrayList();
+            dataLista.addAll(seriesWork, seriesDist);
+            barChartActivity.setData(dataLista);
+        });
     }
 
-    public void updateProductivityScore(double score) {
-        double sanitizedScore = Math.max(0.0, Math.min(1.0, score));
-        lblScorePercent.setText((int) (sanitizedScore * 100) + "%");
-        double maxHeight = 160.0;
-        scoreFill.setPrefHeight(maxHeight * sanitizedScore);
+    // =========================================================================
+    // 🧠 PRODUCTIVITY SCORE (CORREGIDO Y SEGURO PARA LAMBDAS)
+    // =========================================================================
+    public void updateProductivityScore(List<Registro> registros) {
+        int porcentajeFinal = calcularPorcentajeProductividad(registros);
+
+        Platform.runLater(() -> {
+            // Actualizamos el porcentaje numérico
+            lblScorePercent.setText(porcentajeFinal + "%");
+
+            // Declaramos las variables aquí dentro para que sean 100% seguras en la UI
+            String mensajeEstado;
+            String colorHex;
+
+            if (porcentajeFinal >= 80) {
+                mensajeEstado = "EXCELENT WORK!";
+                colorHex = "#00FF7F"; // Verde neón
+            } else if (porcentajeFinal >= 60) {
+                mensajeEstado = "GOOD JOB! KEEP IT UP.";
+                colorHex = "#FFA500"; // Naranja
+            } else if (porcentajeFinal >= 40) {
+                mensajeEstado = "YOU CAN DO BETTER.";
+                colorHex = "#FFA500"; // Amarillo/Naranja
+            } else if (porcentajeFinal > 0) {
+                mensajeEstado = "TOO MANY DISTRACTIONS!";
+                colorHex = "#F00C26"; // Rojo intenso
+            } else {
+                mensajeEstado = "NO DATA YET.";
+                colorHex = "#888888"; // Gris
+            }
+
+            // Aplicamos el texto y el estilo de forma segura
+            if (lblScoreMessage != null) {
+                lblScoreMessage.setText(mensajeEstado);
+                lblScoreMessage.setStyle("-fx-text-fill: " + colorHex + "; -fx-font-weight: bold;");
+            } else {
+                System.out.println("⚠️ ATENCIÓN: lblScoreMessage es null. Revisa el fx:id en SceneBuilder.");
+            }
+
+            // Ajustar la altura de la barra azul de fondo
+            double maxHeight = 160.0;
+            double factorProgreso = porcentajeFinal / 100.0;
+            if (scoreFill != null) {
+                scoreFill.setPrefHeight(maxHeight * factorProgreso);
+            }
+        });
     }
-    
-    // Diego
+
+    private int calcularPorcentajeProductividad(List<Registro> registros) {
+        if (registros == null || registros.isEmpty()) {
+            return 0;
+        }
+
+        double segundosTrabajo = 0;
+        double segundosDistraccion = 0;
+
+        for (Registro r : registros) {
+            if (r == null) {
+                continue;
+            }
+
+            String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
+            String nombre = r.getNombreActividad() != null ? r.getNombreActividad().toLowerCase() : "";
+
+            // CLASIFICACIÓN IDÉNTICA A LA DE LAS TARJETAS (Card metrics)
+            if ("TRABAJO".equals(cat) || nombre.contains("netbeans")) {
+                segundosTrabajo += r.getDuracionSeg();
+            } else if ("DISTRACCION".equals(cat)) {
+                segundosDistraccion += r.getDuracionSeg();
+            }
+        }
+
+        // 1. Pasamos a minutos exactos
+        double minutosTrabajo = segundosTrabajo / 60.0;
+        double minutosDistraccion = segundosDistraccion / 60.0;
+        double minutosTotales = minutosTrabajo + minutosDistraccion;
+
+        if (minutosTotales <= 0) {
+            return 0;
+        }
+
+        // 2. Tu regla de 3 estricta: (work time * 100) / total hours
+        double resultado = (minutosTrabajo * 100.0) / minutosTotales;
+
+        int porcentajeFinal = (int) Math.round(resultado);
+
+        return Math.max(0, Math.min(100, porcentajeFinal));
+    }
+
     private void actualizarVistaSegura() {
         long ahora = System.currentTimeMillis();
         if (ahora - ultimaActualizacionUi < MIN_MS_ENTRE_ACTUALIZACIONES) {
@@ -483,15 +638,45 @@ public class DashboardController implements Initializable, Controllable {
         }
         ultimaActualizacionUi = ahora;
 
-        Platform.runLater(() -> {
-            recargarDatosDesdeBd();
-        });
+        Platform.runLater(this::recargarDatosDesdeBd);
     }
 
     private void recargarDatosDesdeBd() {
-        // Aquí pides los datos a tus puertos (repositorio o tracking)
-        // Ejemplo: var datos = ctx.repositorio().obtenerUltimosRegistros();
-        System.out.println("Cargando información optimizada desde la base de datos...");
+        if (repository != null && usuarioActual != null) {
+            System.out.println("Cargando información optimizada desde la base de datos...");
+
+            List<Registro> topTrabajo = repository.obtenerTopTrabajo(usuarioActual, 5);
+            List<Registro> topDistracciones = repository.obtenerTopDistracciones(usuarioActual, 5);
+            List<Registro> actividad = repository.obtenerActividadHoy(usuarioActual);
+            List<Registro> bloqueos = repository.obtenerBloqueosHoy(usuarioActual);
+
+            if ((topTrabajo == null || topTrabajo.isEmpty()) && actividad != null && !actividad.isEmpty()) {
+                topTrabajo = actividad.stream()
+                        .filter(r -> r != null && (("TRABAJO".equalsIgnoreCase(r.getCategoria() != null ? r.getCategoria().trim() : ""))
+                        || (r.getNombreActividad() != null && r.getNombreActividad().toLowerCase().contains("netbeans"))))
+                        .collect(Collectors.groupingBy(Registro::getNombreActividad, Collectors.summingLong(Registro::getDuracionSeg)))
+                        .entrySet().stream()
+                        .map(entry -> {
+                            Registro reg = new Registro();
+                            reg.setNombreActividad(entry.getKey());
+                            reg.setDuracionSeg(entry.getValue());
+                            reg.setCategoria("TRABAJO");
+                            return reg;
+                        })
+                        .sorted((r1, r2) -> Long.compare(r2.getDuracionSeg(), r1.getDuracionSeg()))
+                        .limit(5)
+                        .collect(Collectors.toList());
+            }
+
+            actualizarCards(actividad);
+            actualizarRankingTrabajo(topTrabajo);
+            actualizarRankingDistracciones(topDistracciones);
+            actualizarLogActividad(actividad);
+            actualizarLogBloqueos(bloqueos);
+            actualizarGraficoReal(actividad);
+
+            updateProductivityScore(actividad);
+        }
     }
 
     public void detenerPlanificador() {
@@ -500,18 +685,9 @@ public class DashboardController implements Initializable, Controllable {
         }
     }
 
-}
-/*private void actualizarVistaSegura() {
-        long ahora = System.currentTimeMillis();
-        if (ahora - ultimaActualizacionUi < MIN_MS_ENTRE_ACTUALIZACIONES) {
-            return; // Ignorar, la UI se actualizó hace menos de 2s
-        }
-        ultimaActualizacionUi = ahora;
-
-        Platform.runLater(() -> {
-            // Actualizar tabla, gráficos, etc.
-            recargarDatosDesdeBd();
-        });
+    @Override
+    public void shutdown() {
+        detenerPlanificador();
     }
- */
 
+}

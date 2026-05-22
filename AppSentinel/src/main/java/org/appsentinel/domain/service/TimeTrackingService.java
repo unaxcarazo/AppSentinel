@@ -17,33 +17,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import org.appsentinel.domain.port.out.FocoActivoPort;
 
-/**
- * TimeTrackingService: Orquestador principal del seguimiento de actividad.
- *
- * ARQUITECTURA ETIQUETA NEGRA (Productor-Consumidor Lock-Free I/O):
- * - Lecturas concurrentes seguras: FocoActivoPort (UI) lee de ConcurrentHashMap
- *   sin cerrojos, garantizando 60 FPS en JavaFX sin riesgo de corrupción.
- * - Mutaciones atómicas ultrarrápidas: El bloque 'synchronized(lockLimpieza)'
- *   protege estrictamente la coherencia de estado en memoria (nanosegundos).
- * - I/O Desacoplado: Las escrituras a PostgreSQL NO ocurren en el hilo del escáner.
- *   Se preparan objetos Registro dentro del lock y se flushean FUERA del lock
- *   via repository.guardar(), que es NON-BLOCKING (encola en buffer de memoria).
- *   Un PersistenceWorker en infraestructura procesa asíncronamente.
- *
- * FIX 2.1 (Pureza Hexagonal):
- * El dominio ya NO consulta java.lang.ProcessHandle. El startInstant del proceso
- * llega como parámetro desde el adaptador de entrada (ProcessWindowMonitorAdapter),
- * que es el único responsable de resolver metadatos del sistema operativo.
- *
- * ANTI-SATURACIÓN:
- * - Foco activo: acumula en memoria, persiste al perder foco (1 INSERT por sesión).
- * - Segundo plano: acumula 60s en memoria antes de persistir (6x menos INSERTs).
- */
 public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoActivoPort {
 
     private static final Logger LOGGER = Logger.getLogger(TimeTrackingService.class.getName());
@@ -58,9 +37,10 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     private final boolean modoEstricto;
     private final String usuario;
 
-    // Estado en memoria: Seguro para lecturas concurrentes (UI) y writes atómicos
     private final ConcurrentHashMap<String, SesionExistencia> sesiones = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, SeguimientoActividad> activas = new ConcurrentHashMap<>();
+
+    private final AtomicReference<Map<String, SeguimientoActividad>> activasRef =
+        new AtomicReference<>(Map.of());
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "TimeTracking-Scheduler");
@@ -70,11 +50,11 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
     private final Object lockLimpieza = new Object();
 
-    private static final int GRACIA_ESTRICTO_SEG              = 10;
-    private static final int SEGUNDOS_AUSENCIA_USUARIO        = 300;
-    private static final int SEGUNDOS_SIN_RASTRO              = 120;
-    private static final int SEGUNDOS_FLUSH_BG                = 60;
-    private static final int UMBRAL_MINIMO_PERSISTENCIA_SEG   = 5;
+    private static final int GRACIA_ESTRICTO_SEG            = 10;
+    private static final int SEGUNDOS_AUSENCIA_USUARIO      = 300;
+    private static final int SEGUNDOS_SIN_RASTRO            = 120;
+    private static final int SEGUNDOS_FLUSH_BG              = 60;
+    private static final int UMBRAL_MINIMO_PERSISTENCIA_SEG = 5;
 
     private static final Pattern PROTOCOLO_WWW = Pattern.compile("https?://(www\\.)?");
     private static final Pattern PATH_QUERY    = Pattern.compile("/.*");
@@ -85,7 +65,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     );
 
     private volatile LocalDateTime ultimoInputUsuario = LocalDateTime.now();
-
 
     public TimeTrackingService(DistractionDetector detector,
                                RegistroRepositoryPort repository,
@@ -110,16 +89,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         LOGGER.log(Level.INFO, "TimeTrackingService iniciado — usuario: {0} | Modo: {1}",
             new Object[]{usuario, modoEstricto ? "ESTRICTO" : "NORMAL"});
         LOGGER.log(Level.INFO, "Persistencia: buffer non-blocking, acumulación BG cada {0}s", SEGUNDOS_FLUSH_BG);
+        LOGGER.log(Level.INFO, "[DEBUG-CONFIG] segundosAviso={0} segundosBloqueo={1} modoEstricto={2}",
+            new Object[]{segundosAviso, segundosBloqueo, modoEstricto});
     }
 
     // -------------------------------------------------------------------------
-    // Puertos de entrada (Eventos del Sistema/Web)
+    // Puertos de entrada
     // -------------------------------------------------------------------------
 
-    /**
-     * FIX 2.1: Recibe startInstant resuelto por el adaptador de entrada.
-     * El dominio ya NO consulta ProcessHandle.
-     */
     @Override
     public void reportarActividadSistema(String proceso, String titulo, int pid, Instant startInstant) {
         ultimoInputUsuario = LocalDateTime.now();
@@ -147,10 +124,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         flushearPendientes(pendientes);
     }
 
-    /**
-     * Flushea registros preparados FUERA del lock.
-     * repository.guardar() es NON-BLOCKING (encola en buffer de memoria).
-     */
     private void flushearPendientes(List<Registro> pendientes) {
         for (Registro r : pendientes) {
             repository.guardar(r);
@@ -158,32 +131,29 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     }
 
     // -------------------------------------------------------------------------
-    // FocoActivoPort — consulta del estado actual de foco (Safe Concurrent Reads)
+    // FocoActivoPort
     // -------------------------------------------------------------------------
 
     @Override
     public int getPidFocoActivo() {
-        return activas.values().stream().findFirst().map(seg -> seg.pid).orElse(-1);
+        return activasRef.get().values().stream().findFirst().map(seg -> seg.pid).orElse(-1);
     }
 
     @Override
     public String getNombreFocoActivo() {
-        return activas.values().stream().findFirst().map(seg -> seg.nombre).orElse(null);
+        return activasRef.get().values().stream().findFirst().map(seg -> seg.nombre).orElse(null);
     }
 
     @Override
     public boolean esFocoWeb() {
-        return activas.keySet().stream().findFirst().map(clave -> clave.startsWith("WEB|")).orElse(false);
+        return activasRef.get().keySet().stream().findFirst()
+            .map(clave -> clave.startsWith("WEB|")).orElse(false);
     }
 
     // -------------------------------------------------------------------------
-    // Lógica principal y Evaluación
+    // Lógica principal
     // -------------------------------------------------------------------------
 
-    /**
-     * FIX 2.1: Recibe startInstant como parámetro desde el adaptador de entrada.
-     * El dominio nunca consulta ProcessHandle ni ninguna API del sistema operativo.
-     */
     private void procesarActividad(String clave, String nombre, String categoria,
                                    String detalle, int tabId, int pid,
                                    Instant startInstant,
@@ -206,6 +176,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             }
         }
 
+        Map<String, SeguimientoActividad> activas = activasRef.get();
         boolean esMismaApp    = activas.containsKey(clave);
         boolean esNavegadorSO = clave.startsWith("SYS|") && esProcesoNavegador(nombre);
 
@@ -213,37 +184,31 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             Registro flushAnterior = prepararFlushFocoActivo(ahora);
             if (flushAnterior != null) pendientes.add(flushAnterior);
 
-            String claveWebActiva = esNavegadorSO ? claveWebActivaReciente(ahora) : null;
+            String claveWebActiva = esNavegadorSO ? claveWebActivaReciente(activas, ahora) : null;
             if (claveWebActiva != null) {
-                SeguimientoActividad segWeb = activas.get(claveWebActiva);
-                if (segWeb != null) segWeb.ultimaVezVista = ahora;
                 SesionExistencia sesionWeb = sesiones.get(claveWebActiva);
                 if (sesionWeb != null) sesionWeb.ultimaVezVista = ahora;
                 LOGGER.log(Level.FINE, "[FOCO] Navegador ({0}) en primer plano. Web mantiene foco.", nombre);
                 return;
             }
 
-            // FIX 2.1: startInstant ya viene resuelto por el adaptador de entrada.
-            // No se consulta ProcessHandle en el dominio.
-            activas.clear();
-            activas.put(clave, new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid, startInstant));
-            LOGGER.log(Level.INFO, "[FOCO] {0} (startInstant={1})", new Object[]{nombre, startInstant});
+            Map<String, SeguimientoActividad> nuevoMapa = new ConcurrentHashMap<>(2);
+            nuevoMapa.put(clave, new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid, startInstant));
+            activasRef.set(nuevoMapa);
+            LOGGER.log(Level.INFO, "[FOCO] {0} categoria={1} pid={2} (startInstant={3})",
+                new Object[]{nombre, categoria, pid, startInstant});
 
         } else {
             SeguimientoActividad seg = activas.get(clave);
             if (seg != null) {
-                seg.ultimaVezVista = ahora;
                 if (tabId > 0) seg.tabId = tabId;
                 if (pid   > 0) seg.pid   = pid;
             }
         }
     }
 
-    /**
-     * Prepara un Registro con el foco activo actual y resetea sus acumuladores.
-     * NO persiste. La persistencia ocurre FUERA del lock.
-     */
     private Registro prepararFlushFocoActivo(LocalDateTime ahora) {
+        Map<String, SeguimientoActividad> activas = activasRef.get();
         if (activas.isEmpty()) return null;
 
         Map.Entry<String, SeguimientoActividad> entry = activas.entrySet().stream().findFirst().orElse(null);
@@ -252,7 +217,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         String clave = entry.getKey();
         SeguimientoActividad seg = entry.getValue();
 
-        long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
+        long segsFoco    = Duration.between(seg.inicio, ahora).getSeconds();
         long totalAFlush = seg.segundosAcumulados + segsFoco;
 
         if (totalAFlush <= 0) {
@@ -298,9 +263,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     private void avanzarRelojesYVerificar(List<Registro> pendientes) {
         LocalDateTime ahora = LocalDateTime.now();
 
-        // --- Segundo plano: acumular en memoria, flush cada 60s ---
         for (SesionExistencia sesion : sesiones.values()) {
-            if (!activas.containsKey(sesion.clave)) {
+            if (!activasRef.get().containsKey(sesion.clave)) {
                 long segs = Duration.between(sesion.inicio, ahora).getSeconds();
                 if (segs >= UMBRAL_MINIMO_PERSISTENCIA_SEG) {
                     sesion.segundosBackgroundAcumulados += segs;
@@ -313,8 +277,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             }
         }
 
-        // --- Foco activo: acumula en memoria, evalúa bloqueo ---
-        activas.forEach((clave, seg) -> {
+        activasRef.get().forEach((clave, seg) -> {
             long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
             if (segsFoco >= UMBRAL_MINIMO_PERSISTENCIA_SEG) {
                 seg.segundosAcumulados += segsFoco;
@@ -324,6 +287,13 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             if (Categoria.DISTRACCION.equals(seg.categoria)) {
                 long totalFoco = obtenerFocoAcumulado(clave) + seg.segundosAcumulados
                                + Duration.between(seg.inicio, ahora).getSeconds();
+
+                // DEBUG: log en cada ciclo para apps de distracción
+                LOGGER.log(Level.INFO,
+                    "[DEBUG-NIVELES] app={0} totalFoco={1}s aviso={2}s bloqueo={3}s estado={4} killer={5}",
+                    new Object[]{seg.nombre, totalFoco, segundosAviso, segundosBloqueo,
+                                 seg.estado, killer != null ? "OK" : "NULL"});
+
                 if (modoEstricto) aplicarModoEstricto(clave, seg, totalFoco);
                 else aplicarNiveles(clave, seg, totalFoco);
             }
@@ -331,7 +301,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     }
 
     // -------------------------------------------------------------------------
-    // Encolado de Persistencia (prepara Registro, SIN I/O)
+    // Encolado de Persistencia
     // -------------------------------------------------------------------------
 
     private Registro encolarChunkExistencia(SesionExistencia sesion, long segs, LocalDateTime ahora) {
@@ -363,6 +333,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     private void purgarSesionesMuertas(List<Registro> pendientes) {
         List<String> clavesAEliminar = new ArrayList<>();
         LocalDateTime ahora = LocalDateTime.now();
+        Map<String, SeguimientoActividad> activas = activasRef.get();
 
         for (Map.Entry<String, SesionExistencia> entry : sesiones.entrySet()) {
             String clave            = entry.getKey();
@@ -385,11 +356,17 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         }
 
         clavesAEliminar.forEach(sesiones::remove);
-        activas.keySet().removeIf(clave -> !sesiones.containsKey(clave));
+
+        Map<String, SeguimientoActividad> activasActual = activasRef.get();
+        if (clavesAEliminar.stream().anyMatch(activasActual::containsKey)) {
+            Map<String, SeguimientoActividad> nuevoMapa = new ConcurrentHashMap<>(activasActual);
+            clavesAEliminar.forEach(nuevoMapa::remove);
+            activasRef.set(nuevoMapa);
+        }
     }
 
     private Registro prepararRegistroFocoPurge(SeguimientoActividad seg, LocalDateTime ahora) {
-        long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
+        long segsFoco    = Duration.between(seg.inicio, ahora).getSeconds();
         long totalAFlush = seg.segundosAcumulados + segsFoco;
         if (totalAFlush <= 0) return null;
         return encolarChunkFoco(seg, totalAFlush, ahora);
@@ -409,6 +386,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         List<Registro> pendientes = new ArrayList<>();
         synchronized (lockLimpieza) {
             LocalDateTime ahora = LocalDateTime.now();
+            Map<String, SeguimientoActividad> activas = activasRef.get();
 
             activas.forEach((clave, seg) -> {
                 Registro reg = prepararRegistroFocoPurge(seg, ahora);
@@ -438,10 +416,17 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         return NAVEGADORES.contains(nombreProceso.toLowerCase().replace(".exe", ""));
     }
 
-    private String claveWebActivaReciente(LocalDateTime ahora) {
-        Map.Entry<String, SeguimientoActividad> entry = activas.entrySet().stream().findFirst().orElse(null);
-        if (entry == null || !entry.getKey().startsWith("WEB|")) return null;
-        return Duration.between(entry.getValue().ultimaVezVista, ahora).getSeconds() < 60 ? entry.getKey() : null;
+    private String claveWebActivaReciente(Map<String, SeguimientoActividad> activas, LocalDateTime ahora) {
+        return activas.entrySet().stream()
+            .filter(e -> e.getKey().startsWith("WEB|"))
+            .filter(e -> {
+                SesionExistencia sesion = sesiones.get(e.getKey());
+                return sesion != null &&
+                    Duration.between(sesion.ultimaVezVista, ahora).getSeconds() < 60;
+            })
+            .map(Map.Entry::getKey)
+            .findFirst()
+            .orElse(null);
     }
 
     private long obtenerFocoAcumulado(String clave) {
@@ -476,9 +461,13 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     }
 
     private void cerrar(String clave, SeguimientoActividad seg) {
-        if (killer == null || !activas.containsKey(clave)) return;
+        // DEBUG: log siempre que se intente cerrar
+        LOGGER.log(Level.INFO,
+            "[DEBUG-CERRAR] killer={0} clave={1} pid={2} tabId={3} startInstant={4}",
+            new Object[]{killer != null ? "OK" : "NULL", clave, seg.pid, seg.tabId, seg.startInstant});
+
+        if (killer == null) return;
         if (clave.startsWith("SYS|") && seg.pid > 0) {
-            // FIX A.1: Pasar startInstant capturado en detección para validar anti-reciclaje
             killer.cerrarProceso(seg.nombre, seg.pid, seg.startInstant);
         } else if (clave.startsWith("WEB|") && seg.tabId > 0) {
             killer.cerrarPestañaNavegador(seg.tabId);
@@ -486,28 +475,38 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     }
 
     public void setKiller(KillerPort killer) { this.killer = killer; }
+
     private String fmt(long s) { return (s / 60) + "m " + (s % 60) + "s"; }
+
     private String extraerDominio(String url) {
         if (url == null) return "Desconocido";
         String sinProtocolo = PROTOCOLO_WWW.matcher(url).replaceAll("");
         return PATH_QUERY.matcher(sinProtocolo).replaceAll("").toLowerCase();
     }
 
+    // -------------------------------------------------------------------------
+    // Enumeraciones y clases internas
+    // -------------------------------------------------------------------------
+
     public enum EstadoDistraccion { INICIADA, AVISO_PREVENTIVO, BLOQUEO_SESION, PAUSA_REENFOQUE }
 
     private static class SeguimientoActividad {
         String nombre, detalle, categoria;
-        LocalDateTime inicio, ultimaVezVista;
+        LocalDateTime inicio;
         int tabId, pid;
-        Instant startInstant;  // FIX A.1 / FIX 2.1: capturado por adaptador, validado al matar
+        Instant startInstant;
         EstadoDistraccion estado = EstadoDistraccion.INICIADA;
         long segundosAcumulados = 0;
 
         SeguimientoActividad(String nombre, String detalle, String categoria,
                              LocalDateTime inicio, int tabId, int pid, Instant startInstant) {
-            this.nombre = nombre; this.detalle = detalle; this.categoria = categoria;
-            this.inicio = inicio; this.ultimaVezVista = inicio;
-            this.tabId = tabId; this.pid = pid; this.startInstant = startInstant;
+            this.nombre       = nombre;
+            this.detalle      = detalle;
+            this.categoria    = categoria;
+            this.inicio       = inicio;
+            this.tabId        = tabId;
+            this.pid          = pid;
+            this.startInstant = startInstant;
         }
     }
 
@@ -520,8 +519,11 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         boolean notificadaSinClasificar = false;
 
         SesionExistencia(String clave, String nombre, String categoria, LocalDateTime inicio) {
-            this.clave = clave; this.nombre = nombre; this.categoria = categoria;
-            this.inicio = inicio; this.ultimaVezVista = inicio;
+            this.clave          = clave;
+            this.nombre         = nombre;
+            this.categoria      = categoria;
+            this.inicio         = inicio;
+            this.ultimaVezVista = inicio;
         }
     }
 }

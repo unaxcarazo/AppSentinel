@@ -23,7 +23,7 @@ public class DistractionDetector {
         this.categorias = categorias;
     }
 
-    /**
+    /*
      * Clasifica una app de escritorio por su nombre de proceso.
      */
     public String clasificar(String nombreApp) {
@@ -36,7 +36,7 @@ public class DistractionDetector {
         return (categoria != null) ? categoria : Categoria.SIN_CLASIFICAR;
     }
 
-    /**
+    /*
      * Clasifica una URL del navegador por su dominio.
      * Estrategia jerárquica:
      *   1. Consulta dominio exacto (ej: music.youtube.com).
@@ -68,7 +68,7 @@ public class DistractionDetector {
         return Categoria.SIN_CLASIFICAR;
     }
 
-    /**
+    /*
      * Permite a la UI reclasificar una app en tiempo de ejecución.
      */
     public void reclasificar(String nombreApp, String categoria) {

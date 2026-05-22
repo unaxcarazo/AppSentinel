@@ -4,18 +4,17 @@
 package org.appsentinel.domain.port.out;
 
 /**
- * Puerto de SALIDA del dominio para consultar el foco activo del usuario.
+ * Puerto de SALIDA para consultar el estado del foco activo actual.
  *
- * ARQUITECTURA HEXAGONAL:
- * - Es un puerto de SALIDA (driven): la UI lo consume, el dominio lo implementa.
- * - No es un puerto de entrada: la UI no ordena nada, solo consulta estado.
- * - Los métodos son lecturas idempotentes sin efectos secundarios.
- *
- * FIX 2.2: Movido de domain.port.in a domain.port.out.
  * El dominio (TimeTrackingService) implementa este puerto para exponer
  * hacia la capa de presentación la actividad que tiene el foco del usuario
  * en este momento, sin revelar tipos internos ni estructuras de datos
  * del servicio.
+ *
+ * ARQUITECTURA:
+ * - Es un puerto de salida del dominio: la UI lo consume, el dominio lo implementa.
+ * - No es un puerto de entrada: la UI no ordena nada, solo consulta.
+ * - Los métodos son lecturas idempotentes sin efectos secundarios.
  *
  * VALORES DE RETORNO:
  * - getPidFocoActivo(): PID del proceso de escritorio, o -1 si el foco es

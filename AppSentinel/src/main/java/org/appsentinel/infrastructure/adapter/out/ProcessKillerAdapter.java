@@ -3,28 +3,11 @@ package org.appsentinel.infrastructure.adapter.out;
 import org.appsentinel.domain.port.out.BrowserCommandPort;
 import org.appsentinel.domain.port.out.KillerPort;
 
-import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * ProcessKillerAdapter: Adaptador de SALIDA para cierre quirúrgico de procesos.
- *
- * FIX A.1 (Anti-PID-Recycling):
- * Windows reutiliza PIDs agresivamente. Entre el escaneo (10s) y la orden de
- * bloqueo (que puede demorar minutos en modo estricto con gracia), otro proceso
- * legítimo podría heredar el PID de la distracción.
- *
- * PROTECCIÓN IMPLEMENTADA:
- * 1. Validación de nombre: ph.info().command() vs nombre reportado (existente).
- * 2. Validación de startInstant: el escáner captura el Instant de inicio del
- *    proceso en el momento de detección. Al matar, se compara contra el
- *    startInstant ACTUAL del PID. Si difieren, el PID fue reciclado → abortar.
- *
- * La comparación es matemática (Instant.equals), no por milisegundos.
- */
 public class ProcessKillerAdapter implements KillerPort {
 
     private static final Logger LOGGER = Logger.getLogger(ProcessKillerAdapter.class.getName());
@@ -44,14 +27,14 @@ public class ProcessKillerAdapter implements KillerPort {
     }
 
     @Override
-    public boolean cerrarProceso(String nombreProceso, int pid, Instant startInstantEscaneado) {
+    public boolean cerrarProceso(String nombreProceso, int pid) {
         if (pid <= 0) {
-            LOGGER.log(Level.WARNING, "[KILL] PID inválido recibido ({0}) para: {1}",
+            LOGGER.log(Level.WARNING, "[KILL] PID inválido recibido ({0}) para: {1}", 
                 new Object[]{pid, nombreProceso});
             return false;
         }
 
-        // 1. RESOLUCIÓN DIRECTA POR PID
+        // 1. RESOLUCIÓN DIRECTA POR PID 
         Optional<ProcessHandle> handleOpt = ProcessHandle.of(pid);
         if (handleOpt.isEmpty()) {
             LOGGER.log(Level.WARNING, "[KILL] No existe proceso con PID {0}", pid);
@@ -64,47 +47,25 @@ public class ProcessKillerAdapter implements KillerPort {
             return false;
         }
 
-        // 2. VALIDACIÓN DE SEGURIDAD: nombre REAL del handle
+        // 2. VALIDACIÓN DE SEGURIDAD: extraer nombre REAL del handle, no confiar en el parámetro
         String nombreReal = ph.info().command().map(this::extraerNombre).orElse("desconocido");
         if (PROCESOS_PROTEGIDOS.contains(nombreReal)) {
-            LOGGER.log(Level.SEVERE, "[KILL] BLOQUEADO intento sobre proceso protegido: PID {0} ({1})",
+            LOGGER.log(Level.SEVERE, "[KILL] BLOQUEADO intento sobre proceso protegido: PID {0} ({1})", 
                 new Object[]{pid, nombreReal});
             return false;
         }
 
-        // 3. VALIDACIÓN A.1 — Anti-PID-Recycling:
-        //    Comparar startInstant del escáner vs startInstant actual del PID.
-        //    Si difieren, el PID fue reciclado por otro proceso.
-        Optional<Instant> startInstantActualOpt = ph.info().startInstant();
-        if (startInstantEscaneado != null && startInstantActualOpt.isPresent()) {
-            Instant startInstantActual = startInstantActualOpt.get();
-            if (!startInstantEscaneado.equals(startInstantActual)) {
-                LOGGER.log(Level.SEVERE,
-                    "[KILL] ABORTADO — PID {0} fue RECICLADO. " +
-                    "Escaneado: {1} (start={2}), Actual: {3} (start={4}). " +
-                    "Otro proceso heredó este PID.",
-                    new Object[]{pid, nombreProceso, startInstantEscaneado, nombreReal, startInstantActual});
-                return false;
-            }
-        } else if (startInstantEscaneado == null) {
-            LOGGER.log(Level.WARNING,
-                "[KILL] startInstant del escáner no disponible para PID {0}. " +
-                "Continuando con validación de nombre únicamente (riesgo de reciclaje).",
-                pid);
-        }
-
-        // 4. LOG DE COHERENCIA (discrepancia nombre/pid sin reciclaje)
+        // 3. LOG DE COHERENCIA (opcional, para auditoría de discrepancias nombre/pid)
         String busqueda = normalizarNombre(nombreProceso);
         if (!busqueda.equals(nombreReal)) {
-            LOGGER.log(Level.INFO,
-                "[KILL] Discrepancia nombre/pid: reportado={0}, real={1}. Mataremos por PID.",
+            LOGGER.log(Level.INFO, "[KILL] Discrepancia nombre/pid: reportado={0}, real={1}. Mataremos por PID.", 
                 new Object[]{nombreProceso, nombreReal});
         }
 
-        LOGGER.log(Level.INFO, "[KILL] Ejecutando cierre quirúrgico sobre PID {0} ({1})",
+        LOGGER.log(Level.INFO, "[KILL] Ejecutando cierre quirúrgico sobre PID {0} ({1})", 
             new Object[]{pid, nombreReal});
 
-        // 5. DESTRUCCIÓN FÍSICA
+        // 4. DESTRUCCIÓN FÍSICA (escalado graceful -> forzoso, aislada en bucle externo)
         return destruirProceso(ph);
     }
 
@@ -130,7 +91,7 @@ public class ProcessKillerAdapter implements KillerPort {
             LOGGER.log(Level.WARNING, "[KILL] Permisos insuficientes para PID {0}", pid);
             return false;
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "[KILL] Error inesperado cerrando PID {0}: {1}",
+            LOGGER.log(Level.SEVERE, "[KILL] Error inesperado cerrando PID {0}: {1}", 
                 new Object[]{pid, e.getMessage()});
             return false;
         }
@@ -156,7 +117,7 @@ public class ProcessKillerAdapter implements KillerPort {
     private String extraerNombre(String ruta) {
         if (ruta == null || ruta.isBlank()) return "desconocido";
         String limpia = ruta.replace("\"", "").trim();
-        String sep = limpia.contains("\\") ? "\\" : "/";
+        String sep = limpia.contains("\\") ? "\\\\" : "/";
         String[] partes = limpia.split(sep);
         String nombre = partes[partes.length - 1].toLowerCase();
         int punto = nombre.lastIndexOf('.');

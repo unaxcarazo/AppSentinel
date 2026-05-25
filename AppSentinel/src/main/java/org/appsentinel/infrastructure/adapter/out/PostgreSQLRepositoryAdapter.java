@@ -82,13 +82,21 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         if (registros == null || registros.isEmpty()) {
             return;
         }
-
-        String sql = """
+        /* CAMBIO DE PRUEBA
+        """
             INSERT INTO registros_actividad
             (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
             VALUES (?, ?, ?, ?, ?, ?)
             """;
+        */
 
+        String sql = "INSERT INTO registros_actividad " +
+             "(usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro) " +
+             "VALUES (?, ?, ?, ?, ?, ?) " +
+             "ON CONFLICT (usuario_sistema, nombre_actividad, categoria, (date(fecha_registro))) " +
+             "DO UPDATE SET " +
+             "duracion_seg = registros_actividad.duracion_seg + EXCLUDED.duracion_seg, " +
+             "detalle = EXCLUDED.detalle";
         Connection conn = null;
         try {
             conn = DatabaseConnection.getConnection();

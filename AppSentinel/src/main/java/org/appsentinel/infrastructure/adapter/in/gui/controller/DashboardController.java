@@ -479,6 +479,7 @@ public class DashboardController implements Initializable, Controllable {
         XYChart.Series<String, Number> seriesDist = new XYChart.Series<>();
         seriesDist.setName("Distracción");
 
+        // TreeMap garantiza que las horas se ordenen automáticamente (09:00, 10:00, 11:00...)
         java.util.Map<String, Double> acumuladoTrabajo = new java.util.TreeMap<>();
         java.util.Map<String, Double> acumuladoDistraccion = new java.util.TreeMap<>();
 
@@ -495,11 +496,9 @@ public class DashboardController implements Initializable, Controllable {
                 continue;
             }
 
-            String rawTime = r.getFechaRegistro().toLocalTime().toString();
-            if (rawTime.length() < 2) {
-                continue;
-            }
-            String horaFranja = rawTime.substring(0, 2) + ":00";
+            // 🛠️ SOLUCIÓN AQUÍ: Extraemos la hora numérica y forzamos el formato estricto "HH:00"
+            int horaNumerica = r.getFechaRegistro().toLocalTime().getHour();
+            String horaFranja = String.format("%02d:00", horaNumerica);
 
             double segundos = r.getDuracionSeg();
             if (segundos <= 0) {
@@ -515,6 +514,7 @@ public class DashboardController implements Initializable, Controllable {
                 acumuladoDistraccion.put(horaFranja, 0.0);
             }
 
+            // Clasificación limpia e independiente por hora
             if ("TRABAJO".equals(cat) || nombre.contains("netbeans") || nombre.contains("java")) {
                 acumuladoTrabajo.put(horaFranja, acumuladoTrabajo.get(horaFranja) + minutosReales);
             } else {
@@ -531,6 +531,7 @@ public class DashboardController implements Initializable, Controllable {
             }
         });
 
+        // Pasamos los datos ordenados a las series de la gráfica
         acumuladoTrabajo.forEach((hora, mins) -> seriesWork.getData().add(new XYChart.Data<>(hora, mins)));
         acumuladoDistraccion.forEach((hora, mins) -> seriesDist.getData().add(new XYChart.Data<>(hora, mins)));
 

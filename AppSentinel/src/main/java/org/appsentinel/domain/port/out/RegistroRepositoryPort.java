@@ -9,29 +9,30 @@ import java.util.Map;
 /**
  * Puerto de salida para persistencia de registros de actividad.
  *
- * ARQUITECTURA HEXAGONAL — Separación Escritura/Lectura:
- * <p>
- * Las escrituras ({@link #guardar}, {@link #guardarBatch}) son <em>fire-and-forget</em>
- * non-blocking cuando se implementan vía {@code BufferedRegistroRepositoryAdapter}.
- * El hilo del escáner nunca espera a PostgreSQL.
- * </p>
- * <p>
- * Las lecturas ({@link #obtenerTodosHoy}, {@link #obtenerPorCategoria},
- * {@link #obtenerResumenPorApp}) van directo al adaptador crudo (PostgreSQL),
- * sin interferir con el buffer de escritura. La UI consulta datos frescos
- * sin bloquearse con las escrituras del escáner.
- * </p>
+ * ARQUITECTURA HEXAGONAL — Interfaz pura sin lógica de implementación.
+ *
+ * <p>Responsabilidad: definir el contrato que el dominio espera de la
+ * infraestructura de persistencia. Cero lógica, cero defaults con
+ * comportamiento, cero acoplamiento a tecnología.</p>
+ *
+ * <p>Los métodos batch ({@link #guardarBatch}, {@link #guardarOActualizarBatch})
+ * son contratos explícitos. Cada adaptador concreto (PostgreSQL, H2, mock)
+ * implementa la estrategia de batch óptima para su tecnología:</p>
+ * <ul>
+ *   <li>PostgreSQL: {@code executeBatch()} con {@code PreparedStatement}</li>
+ *   <li>H2: {@code executeBatch()} nativo</li>
+ *   <li>Mock/Test: acumulación en lista en memoria</li>
+ * </ul>
+ *
+ * <p>La decisión de usar batch vs individual pertenece al adaptador,
+ * no al dominio. El dominio solo dice "aquí hay datos, persistelos".</p>
  *
  * @see org.appsentinel.infrastructure.adapter.out.PostgreSQLRepositoryAdapter
- * @see org.appsentinel.infrastructure.adapter.out.BufferedRegistroRepositoryAdapter
  */
 public interface RegistroRepositoryPort {
 
     /**
      * Persiste un registro individual de actividad.
-     *
-     * <p><strong>Non-blocking:</strong> Cuando se implementa vía buffer,
-     * este método encola en memoria y retorna inmediatamente.</p>
      *
      * @param registro Entidad de dominio a persistir. No debe ser {@code null}.
      */
@@ -40,22 +41,39 @@ public interface RegistroRepositoryPort {
     /**
      * Batch insert optimizado.
      *
-     * <p>Default delega a {@link #guardar} individual. Los adaptadores de
-     * infraestructura pueden overridear con {@code executeBatch()} de JDBC
-     * para reducir round-trips de red.</p>
+     * <p>El adaptador concreto decide la estrategia:
+     * {@code executeBatch()} de JDBC, loop de inserts, u otra.</p>
      *
      * @param registros Lista de registros a persistir. {@code null} es no-op.
      */
-    default void guardarBatch(List<Registro> registros) {
-        if (registros != null) {
-            registros.forEach(this::guardar);
-        }
-    }
+    void guardarBatch(List<Registro> registros);
+
+    /**
+     * Acumula duración en un registro existente o inserta uno nuevo.
+     *
+     * <p>UPSERT: Si ya existe un registro para (usuario, app, categoría, fecha)
+     * hoy, suma {@code duracionSeg} al valor existente. Si no, inserta nuevo.</p>
+     *
+     * <p>Garantiza una sola fila por app por día en la BD.</p>
+     *
+     * @param registro Registro con el delta de duración a acumular.
+     */
+    void guardarOActualizar(Registro registro);
+
+    /**
+     * Batch upsert optimizado.
+     *
+     * <p>El adaptador concreto implementa la estrategia de batch upsert
+     * más eficiente para su tecnología de BD.</p>
+     *
+     * @param registros Lista de registros con deltas de duración. {@code null} es no-op.
+     */
+    void guardarOActualizarBatch(List<Registro> registros);
 
     /**
      * Recupera todos los registros del usuario para la fecha actual.
      *
-     * <p>Ordenados por {@code fecha_registro} descendente (más reciente primero).</p>
+     * <p>Con upsert activo, cada app aparece una sola vez (una fila por app).</p>
      *
      * @param usuario Identificador del usuario del sistema operativo.
      * @return Lista de registros, vacía si no hay datos.
@@ -65,8 +83,6 @@ public interface RegistroRepositoryPort {
     /**
      * Filtra registros por categoría para la fecha actual.
      *
-     * <p>Ordenados por {@code duracion_seg} descendente (más tiempo primero).</p>
-     *
      * @param usuario   Identificador del usuario.
      * @param categoria Categoría del dominio ({@link org.appsentinel.domain.model.Categoria}).
      * @return Lista de registros filtrados, vacía si no hay coincidencias.
@@ -74,19 +90,16 @@ public interface RegistroRepositoryPort {
     List<Registro> obtenerPorCategoria(String usuario, String categoria);
 
     /**
-     * Resumen agrupado por aplicación — <strong>FIX anti-saturación de UI</strong>.
+     * Resumen agrupado por aplicación.
      *
-     * <p>Cada app o página web aparece <strong>UNA SOLA VEZ</strong> con su tiempo
-     * total acumulado. Elimina duplicados de la vista cuando el usuario alterna
-     * entre ventanas (ej: Discord → NetBeans → Discord no genera 3 filas, solo 1
-     * fila "discord" con tiempo sumado).</p>
+     * <p>Cada app aparece UNA SOLA VEZ con su tiempo total acumulado.</p>
      *
-     * <p>Implementación SQL: {@code GROUP BY nombre_actividad, categoria} +
-     * {@code SUM(duracion_seg)} + {@code MAX(fecha_registro)}.</p>
+     * <p>NOTA: Con upsert activo, este método podría simplificarse a SELECT directo
+     * sin GROUP BY, ya que la BD ya tiene una sola fila por app. Se mantiene
+     * GROUP BY para compatibilidad con datos históricos pre-upsert.</p>
      *
      * @param usuario Identificador del usuario.
      * @return Map indexado por {@code nombre_actividad} → {@link ResumenActividad}.
-     *         Vacío si no hay registros hoy. Orden implícito por tiempo total DESC.
      */
     Map<String, ResumenActividad> obtenerResumenPorApp(String usuario);
 }

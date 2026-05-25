@@ -23,33 +23,18 @@ import java.util.regex.Pattern;
 /**
  * TimeTrackingService: Orquestador principal del seguimiento de actividad.
  *
+ * FIX UPSERT (Opción A): Una sola fila por app por día en PostgreSQL.
+ * - Reemplaza INSERT individual por INSERT ... ON CONFLICT DO UPDATE.
+ * - Cada ciclo de escáner acumula el delta de duración en la BD.
+ * - Elimina la multiplicidad de registros: 360 INSERTs/hora → 1 fila por app.
+ * - Las vistas leen directo sin GROUP BY.
+ *
  * REGLAS DE NEGOCIO:
  * 1. TODAS las apps detectadas tienen un reloj de existencia continuo (sesiones).
  * 2. Solo la app con FOCO ACTIVO puede ser evaluada para bloqueo.
  * 3. Las apps en segundo plano se registran como "BACKGROUND_X" → nunca se bloquean.
  * 4. Si el usuario está AUSENTE (sin reportes en SEGUNDOS_AUSENCIA_USUARIO), los relojes se congelan.
  * 5. El bloqueo se dispara solo cuando una DISTRACCION supera segundosBloqueo con foco activo.
- *
- * OPTIMIZACIÓN DE PERSISTENCIA (Anti-saturación):
- * El escáner sigue ejecutándose cada 10 segundos (requisito funcional), pero la
- * persistencia en PostgreSQL ya NO ocurre en cada ciclo. En su lugar:
- *
- *   - Foco activo: acumula segundos en memoria (segundosAcumulados). Solo se
- *     persiste cuando la app pierde el foco (cambio de ventana/pestaña) o al
- *     cerrar la sesión (purgarSesionesMuertas / finalizar).
- *   - Segundo plano: se persiste cada ciclo de mantenimiento (10s) como antes,
- *     pero solo para apps que NO tienen foco. Esto es inevitable: necesitamos
- *     saber que la app sigue viva en segundo plano.
- *
- * RESULTADO:
- *   - VS Code 2h sin interrupciones: 1 INSERT (antes 720).
- *   - Chrome con 10 tabs: 1 INSERT por tab activa (antes 360 por tab).
- *   - Segundo plano: mantiene chunks de 10s (correcto, son apps distintas).
- *
- * INVARIANTE DE PERSISTENCIA:
- * - Una app enfocada → persiste SOLO al perder foco o cerrar sesión.
- * - Una app en segundo plano → persiste cada 10s via persistirChunkExistencia.
- * - Esta regla se aplica uniformemente en el ciclo normal, en la purga y en el cierre.
  */
 public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoActivoPort {
 
@@ -116,7 +101,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
         System.out.println("TimeTrackingService iniciado — usuario: " + usuario);
         System.out.println("   Modo: " + (modoEstricto ? "ESTRICTO" : "NORMAL"));
-        System.out.println("   Persistencia optimizada: foco acumula en memoria, flush al perder foco.");
+        System.out.println("   Persistencia UPSERT: una fila por app por día.");
     }
 
     // -------------------------------------------------------------------------
@@ -222,7 +207,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             boolean esNavegadorSO = clave.startsWith("SYS|") && esProcesoNavegador(nombre);
 
             if (!esMismaApp) {
-                // ANTES de cambiar el foco: flush del acumulado del foco anterior
+                // FIX UPSERT: Flush del foco anterior con upsert (acumula en BD)
                 flushFocoActivo(ahora);
 
                 String claveWebActiva = esNavegadorSO ? claveWebActivaReciente(ahora) : null;
@@ -259,17 +244,16 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     }
 
     // -------------------------------------------------------------------------
-    // Flush del foco activo (persistencia optimizada)
+    // Flush del foco activo (UPSERT — acumula en una sola fila)
     // -------------------------------------------------------------------------
 
     /**
-     * Persiste el tiempo acumulado del foco activo actual y lo resetea.
+     * Flushea el tiempo acumulado del foco activo a la BD via UPSERT.
      * Se invoca cuando la app pierde el foco (cambio de ventana/pestaña)
      * o al cerrar la sesión (purgar / finalizar).
      *
-     * ANTI-SATURACIÓN: en lugar de 1 INSERT cada 10s, acumula en memoria
-     * y hace 1 INSERT al perder el foco. Para VS Code 2h: 1 registro
-     * en lugar de 720.
+     * FIX UPSERT: En lugar de INSERT individual, usa guardarOActualizar()
+     * que acumula duración en una sola fila por app por día.
      */
     private void flushFocoActivo(LocalDateTime ahora) {
         if (activas.isEmpty()) return;
@@ -285,8 +269,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         long totalAFlush = seg.segundosAcumulados + segsFoco;
 
         if (totalAFlush > 0) {
-            persistirChunkFoco(clave, seg, totalAFlush, ahora);
-            System.out.println("[FLUSH] " + seg.nombre + " → " + fmt(totalAFlush) + " persistidos (foco perdido)");
+            acumularChunkFoco(clave, seg, totalAFlush, ahora);
+            System.out.println("[FLUSH] " + seg.nombre + " → " + fmt(totalAFlush) + " acumulados via UPSERT");
         }
 
         // Resetear acumuladores (la sesión de existencia sigue viva)
@@ -317,28 +301,27 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     private void avanzarRelojesYVerificar() {
         LocalDateTime ahora = LocalDateTime.now();
 
-        // --- Segundo plano: persiste cada 10s (correcto, son apps distintas) ---
+        // --- Segundo plano: acumula via UPSERT cada 10s ---
         for (SesionExistencia sesion : sesiones.values()) {
             long segsDesdeInicio = Duration.between(sesion.inicio, ahora).getSeconds();
             if (segsDesdeInicio > 5) {
                 if (!activas.containsKey(sesion.clave)) {
-                    persistirChunkExistencia(sesion, segsDesdeInicio, ahora);
+                    acumularChunkExistencia(sesion, segsDesdeInicio, ahora);
                 }
                 sesion.inicio = ahora;
             }
         }
 
-        // --- Foco activo: acumula en memoria, NO persiste ---
+        // --- Foco activo: acumula en memoria, evalúa bloqueo ---
         activas.forEach((clave, seg) -> {
             long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
 
             if (segsFoco > 5) {
-                // Acumular en memoria en lugar de persistir inmediatamente
                 seg.segundosAcumulados += segsFoco;
                 seg.inicio = ahora;
             }
 
-            // Lógica de bloqueo sigue funcionando con el tiempo total (acumulado + actual)
+            // Lógica de bloqueo con tiempo total (memoria + histórico)
             if (Categoria.DISTRACCION.equals(seg.categoria)) {
                 long focoHistorico  = obtenerFocoAcumulado(clave);
                 long segsFocoActual = Duration.between(seg.inicio, ahora).getSeconds();
@@ -354,10 +337,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     }
 
     // -------------------------------------------------------------------------
-    // Persistencia
+    // Persistencia UPSERT
     // -------------------------------------------------------------------------
 
-    private void persistirChunkExistencia(SesionExistencia sesion, long segs, LocalDateTime ahora) {
+    /**
+     * FIX UPSERT: Acumula duración de segundo plano en una sola fila por app.
+     * Usa repository.guardarOActualizar() en lugar de guardar().
+     */
+    private void acumularChunkExistencia(SesionExistencia sesion, long segs, LocalDateTime ahora) {
         Registro reg = new Registro();
         reg.setUsuarioSistema(usuario);
         reg.setNombreActividad(sesion.nombre);
@@ -365,10 +352,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         reg.setDetalle("Segundo plano");
         reg.setDuracionSeg(segs);
         reg.setFechaRegistro(ahora);
-        repository.guardar(reg);
+        repository.guardarOActualizar(reg);
     }
 
-    private void persistirChunkFoco(String clave, SeguimientoActividad seg,
+    /**
+     * FIX UPSERT: Acumula duración de foco activo en una sola fila por app.
+     * Usa repository.guardarOActualizar() en lugar de guardar().
+     */
+    private void acumularChunkFoco(String clave, SeguimientoActividad seg,
                                     long segs, LocalDateTime ahora) {
         Registro reg = new Registro();
         reg.setUsuarioSistema(usuario);
@@ -377,7 +368,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         reg.setDetalle("Foco activo: " + seg.detalle);
         reg.setDuracionSeg(segs);
         reg.setFechaRegistro(ahora);
-        repository.guardar(reg);
+        repository.guardarOActualizar(reg);
 
         SesionExistencia sesion = sesiones.get(clave);
         if (sesion != null) {
@@ -475,13 +466,13 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                 long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
                 long totalAFlush = seg.segundosAcumulados + segsFoco;
                 if (totalAFlush > 0) {
-                    persistirChunkFoco(clave, seg, totalAFlush, ahora);
+                    acumularChunkFoco(clave, seg, totalAFlush, ahora);
                 }
             } else {
-                // App en segundo plano: persiste chunk normalmente
+                // App en segundo plano: acumula chunk via upsert
                 long segsDesdeInicio = Duration.between(sesion.inicio, ahora).getSeconds();
                 if (segsDesdeInicio > 0) {
-                    persistirChunkExistencia(sesion, segsDesdeInicio, ahora);
+                    acumularChunkExistencia(sesion, segsDesdeInicio, ahora);
                 }
             }
 
@@ -517,7 +508,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                 long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
                 long totalAFlush = seg.segundosAcumulados + segsFoco;
                 if (totalAFlush > 0) {
-                    persistirChunkFoco(entry.getKey(), seg, totalAFlush, ahora);
+                    acumularChunkFoco(entry.getKey(), seg, totalAFlush, ahora);
                 }
             }
 
@@ -526,13 +517,13 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                 if (!activas.containsKey(sesion.clave)) {
                     long segs = Duration.between(sesion.inicio, ahora).getSeconds();
                     if (segs > 0) {
-                        persistirChunkExistencia(sesion, segs, ahora);
+                        acumularChunkExistencia(sesion, segs, ahora);
                     }
                 }
             }
         }
 
-        System.out.println("[FIN] Seguimiento finalizado — flush completo realizado.");
+        System.out.println("[FIN] Seguimiento finalizado — flush completo realizado via UPSERT.");
     }
 
     public void setKiller(KillerPort killer) {
@@ -569,8 +560,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         int pid;
         EstadoDistraccion estado = EstadoDistraccion.INICIADA;
 
-        // NUEVO: acumulador en memoria para anti-saturación
-        // El tiempo de foco se acumula aquí y solo se persiste al perder el foco
+        // Acumulador en memoria para anti-saturación
         long segundosAcumulados = 0;
 
         SeguimientoActividad(String nombre, String detalle, String categoria,

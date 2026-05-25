@@ -1,6 +1,7 @@
 package org.appsentinel.infrastructure.bootstrap;
 
 import org.appsentinel.domain.service.DistractionDetector;
+import org.appsentinel.domain.service.MantenimientoDiarioService;
 import org.appsentinel.domain.service.TimeTrackingService;
 import org.appsentinel.infrastructure.adapter.in.ProcessWindowMonitorAdapter;
 import org.appsentinel.infrastructure.adapter.in.WebSocketAdapter;
@@ -9,7 +10,9 @@ import org.appsentinel.infrastructure.adapter.out.OshiRendimientoAdapter;
 import org.appsentinel.infrastructure.adapter.out.PostgreSQLCategoriaAdapter;
 import org.appsentinel.infrastructure.adapter.out.PostgreSQLRepositoryAdapter;
 import org.appsentinel.infrastructure.adapter.out.ProcessKillerAdapter;
+import org.appsentinel.infrastructure.adapter.out.persistence.PostgresDatabaseCleaner;
 import org.appsentinel.infrastructure.config.AppConfig;
+import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
 
 /**
  * AppWiring: Ensamblador del sistema (Dependency Injection manual).
@@ -17,13 +20,11 @@ import org.appsentinel.infrastructure.config.AppConfig;
  * Instancia todos los adaptadores, los conecta con el dominio a través
  * de los puertos correspondientes y devuelve un AppContext inmutable.
  *
- * NOTA SOBRE FocoActivoPort:
- * TimeTrackingService implementa FocoActivoPort. En el wiring se pasa
- * la misma instancia (tracking) dos veces en AppContext:
- *   - como tracking: servicio completo (MonitorPort, BrowserEventPort)
- *   - como focoActivo: puerto de consulta (FocoActivoPort)
- * Esto es polimorfismo por interfaces: la UI consume FocoActivoPort
- * sin saber que detrás está TimeTrackingService.
+ * FIX: Añade MantenimientoDiarioService para limpieza automática diaria
+ * de la BD, funcionando en ambos modos (GUI y headless).
+ *
+ * FIX: detenerTodo() cierra el pool HikariCP para evitar fugas de
+ * conexiones en el shutdown de JavaFX.
  */
 public class AppWiring {
 
@@ -31,6 +32,7 @@ public class AppWiring {
     private static WebSocketAdapter             webSocketInstance;
     private static ProcessWindowMonitorAdapter  monitorInstance;
     private static TimeTrackingService          trackingInstance;
+    private static MantenimientoDiarioService   mantenimientoInstance;
 
     public static AppContext construir() {
 
@@ -39,6 +41,12 @@ public class AppWiring {
         PostgreSQLRepositoryAdapter repo         = new PostgreSQLRepositoryAdapter();
         JavaFXAlertAdapter          notificacion = new JavaFXAlertAdapter();
         OshiRendimientoAdapter      rendimiento  = new OshiRendimientoAdapter();
+
+        // ========== MANTENIMIENTO DIARIO ==========
+        PostgresDatabaseCleaner cleaner = new PostgresDatabaseCleaner();
+        MantenimientoDiarioService mantenimiento = new MantenimientoDiarioService(cleaner);
+        mantenimiento.iniciar();
+        mantenimientoInstance = mantenimiento;
 
         // ========== DOMINIO ==========
         DistractionDetector detector = new DistractionDetector(categorias);
@@ -70,29 +78,32 @@ public class AppWiring {
         monitorInstance = monitor;
 
         // ========== CONTEXTO: SOLO PUERTOS, NO ADAPTADORES CONCRETOS ==========
-        // tracking se pasa dos veces: como servicio y como FocoActivoPort
         return new AppContext(
             tracking,      // TimeTrackingService (MonitorPort, BrowserEventPort)
-            repo,
-            categorias,
-            notificacion,
-            killer,
-            rendimiento,
-            tracking       // FocoActivoPort (misma instancia, rol distinto)
+            repo,          // RegistroRepositoryPort
+            categorias,    // CategoriaRepositoryPort
+            notificacion,  // NotificacionPort
+            killer,        // KillerPort
+            rendimiento,   // RendimientoSistemaPort
+            tracking,      // FocoActivoPort (misma instancia, rol distinto)
+            mantenimiento  // MantenimientoDiarioService (nuevo)
         );
     }
 
     /**
      * Detiene todos los hilos de infraestructura en el orden correcto:
-     * 1. Monitor de procesos — deja de escanear el OS.
-     * 2. WebSocket — cierra el puerto 8080 y el rate-limiter.
-     * 3. Tracking — persiste los chunks pendientes y para el scheduler.
-     *
-     * OshiRendimientoAdapter no necesita parada explícita: no tiene hilos
-     * propios, solo lee el hardware bajo demanda desde el hilo de la UI.
+     * 1. Mantenimiento diario — para la limpieza programada.
+     * 2. Monitor de procesos — deja de escanear el OS.
+     * 3. WebSocket — cierra el puerto 8080.
+     * 4. Tracking — persiste los chunks pendientes y para el scheduler.
+     * 5. Pool de conexiones — libera conexiones HikariCP.
      */
     public static void detenerTodo() {
-        System.out.println("[SHUTDOWN] Iniciando apagado limpio de hilos de infraestructura...");
+        System.out.println("[SHUTDOWN] Iniciando apagado limpio...");
+
+        if (mantenimientoInstance != null) {
+            mantenimientoInstance.detener();
+        }
 
         if (monitorInstance != null) {
             monitorInstance.detener();
@@ -105,6 +116,9 @@ public class AppWiring {
         if (trackingInstance != null) {
             trackingInstance.finalizar();
         }
+
+        // FIX: Cerrar pool HikariCP para evitar fugas de conexiones
+        DatabaseConnection.cerrarPool();
 
         System.out.println("[SHUTDOWN] Sistema apagado correctamente.");
     }

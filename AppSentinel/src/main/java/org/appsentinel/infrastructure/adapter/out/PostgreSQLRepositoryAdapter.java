@@ -16,20 +16,24 @@ import java.util.logging.Logger;
 /**
  * PostgreSQLRepositoryAdapter: Adaptador de SALIDA para la persistencia del historial.
  *
- * FIX BATCH: Implementa guardarBatch() con PreparedStatement.addBatch() + executeBatch()
- * en transacción atómica (setAutoCommit(false) + commit()).
+ * ARQUITECTURA HEXAGONAL — Responsabilidad: implementar el contrato del Port
+ * usando tecnología PostgreSQL. Contiene toda la lógica de batch, transacciones,
+ * y optimizaciones JDBC. El dominio no sabe que existe PostgreSQL.
  *
- * FIX UI: obtenerResumenPorApp() usa GROUP BY para que cada app aparezca UNA SOLA VEZ
- * con su tiempo total acumulado, eliminando duplicados de la vista.
+ * FIX UPSERT: Implementa guardarOActualizar() con INSERT ... ON CONFLICT DO UPDATE
+ * para acumular duración en una sola fila por app por día.
  *
- * FIX 2.3 (SQL Sargable + Preservar Orden):
- * - Reemplaza DATE(fecha_registro) = CURRENT_DATE por rango de timestamp
- *   que aprovecha índices B-Tree: >= CURRENT_DATE AND < CURRENT_DATE + INTERVAL '1 day'.
- * - Cambia HashMap por LinkedHashMap en obtenerResumenPorApp() para preservar
- *   el ORDER BY tiempo_total_seg DESC de PostgreSQL.
+ * FIX BATCH: guardarBatch() y guardarOActualizarBatch() usan executeBatch() nativo
+ * de JDBC en transacción atómica. No hay defaults en el Port, toda la lógica está aquí.
  *
- * ÍNDICE RECOMENDADO:
+ * FIX 2.3 (SQL Sargable): Reemplaza DATE(fecha_registro) = CURRENT_DATE por rango
+ * de timestamp que aprovecha índices B-Tree.
+ *
+ * ÍNDICES REQUERIDOS:
  *   CREATE INDEX idx_registros_user_fecha ON registros_actividad(usuario_sistema, fecha_registro);
+ *   CREATE UNIQUE INDEX idx_registro_unico_dia ON registros_actividad(
+ *       usuario_sistema, nombre_actividad, categoria, DATE(fecha_registro)
+ *   );
  */
 public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
@@ -39,6 +43,10 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     private static final int LIMITE_CATEGORIA = 100;
     private static final int LIMITE_DETALLE = 500;
     private static final int LIMITE_USUARIO = 100;
+
+    // -------------------------------------------------------------------------
+    // INSERT individual (legacy, para compatibilidad)
+    // -------------------------------------------------------------------------
 
     @Override
     public void guardar(Registro registro) {
@@ -70,11 +78,10 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         }
     }
 
-    /**
-     * Batch insert transaccional con executeBatch().
-     * Usa una sola conexión, una sola PreparedStatement, un solo round-trip de red.
-     * Si falla, hace rollback para mantener consistencia.
-     */
+    // -------------------------------------------------------------------------
+    // BATCH INSERT (executeBatch nativo de JDBC)
+    // -------------------------------------------------------------------------
+
     @Override
     public void guardarBatch(List<Registro> registros) {
         if (registros == null || registros.isEmpty()) return;
@@ -100,47 +107,109 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
                 int[] resultados = stmt.executeBatch();
                 conn.commit();
 
-                int exitosos = 0;
-                for (int r : resultados) {
-                    if (r >= 0 || r == Statement.SUCCESS_NO_INFO) exitosos++;
-                }
-
-                LOGGER.log(Level.INFO, "[PERSISTENCIA] Batch ejecutado: {0}/{1} registros insertados",
+                int exitosos = contarExitosos(resultados);
+                LOGGER.log(Level.INFO, "[PERSISTENCIA] Batch insert: {0}/{1} registros",
                     new Object[]{exitosos, registros.size()});
             }
 
         } catch (SQLException e) {
-            LOGGER.log(Level.SEVERE, "[ERROR] Fallo en batch insert de " + registros.size() + " registros. Haciendo rollback...", e);
-            if (conn != null) {
-                try { conn.rollback(); } catch (SQLException ex) {
-                    LOGGER.log(Level.SEVERE, "[ERROR] Rollback fallido", ex);
-                }
-            }
+            LOGGER.log(Level.SEVERE, "[ERROR] Batch insert falló. Rollback...", e);
+            rollbackSilencioso(conn);
         } finally {
-            if (conn != null) {
-                try {
-                    conn.setAutoCommit(true);
-                    conn.close();
-                } catch (SQLException e) {
-                    LOGGER.log(Level.WARNING, "[ERROR] Fallo restaurando auto-commit", e);
-                }
-            }
+            restaurarAutoCommit(conn);
         }
     }
 
-    private void setParams(PreparedStatement stmt, Registro reg) throws SQLException {
-        stmt.setString(1, truncar(reg.getUsuarioSistema(), LIMITE_USUARIO));
-        stmt.setString(2, truncar(reg.getNombreActividad(), LIMITE_NOMBRE_ACTIVIDAD));
-        stmt.setString(3, truncar(reg.getCategoria(), LIMITE_CATEGORIA));
-        stmt.setString(4, truncar(reg.getDetalle(), LIMITE_DETALLE));
-        stmt.setLong(5, reg.getDuracionSeg());
-        stmt.setTimestamp(6, Timestamp.valueOf(reg.getFechaRegistro()));
+    // -------------------------------------------------------------------------
+    // UPSERT individual (INSERT ... ON CONFLICT DO UPDATE)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void guardarOActualizar(Registro registro) {
+        if (registro == null) return;
+
+        String sql = """
+            INSERT INTO registros_actividad
+            (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (usuario_sistema, nombre_actividad, categoria, DATE(fecha_registro))
+            DO UPDATE SET
+                duracion_seg = registros_actividad.duracion_seg + EXCLUDED.duracion_seg,
+                fecha_registro = EXCLUDED.fecha_registro,
+                detalle = EXCLUDED.detalle
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            setParams(stmt, registro);
+            int filasAfectadas = stmt.executeUpdate();
+
+            LOGGER.log(Level.FINE, "[UPSERT] {0} +{1}s (filas: {2})",
+                new Object[]{
+                    truncar(registro.getNombreActividad(), 50),
+                    registro.getDuracionSeg(),
+                    filasAfectadas
+                });
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE,
+                "[ERROR] Upsert falló para {0}: {1}",
+                new Object[]{registro.getNombreActividad(), e.getMessage()});
+        }
     }
 
-    /**
-     * FIX 2.3: SQL sargable — reemplaza DATE(fecha_registro) = CURRENT_DATE
-     * por rango de timestamp que aprovecha índices B-Tree.
-     */
+    // -------------------------------------------------------------------------
+    // BATCH UPSERT (executeBatch con ON CONFLICT)
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void guardarOActualizarBatch(List<Registro> registros) {
+        if (registros == null || registros.isEmpty()) return;
+
+        String sql = """
+            INSERT INTO registros_actividad
+            (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT (usuario_sistema, nombre_actividad, categoria, DATE(fecha_registro))
+            DO UPDATE SET
+                duracion_seg = registros_actividad.duracion_seg + EXCLUDED.duracion_seg,
+                fecha_registro = EXCLUDED.fecha_registro,
+                detalle = EXCLUDED.detalle
+            """;
+
+        Connection conn = null;
+        try {
+            conn = DatabaseConnection.getConnection();
+            conn.setAutoCommit(false);
+
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                for (Registro reg : registros) {
+                    if (reg == null) continue;
+                    setParams(stmt, reg);
+                    stmt.addBatch();
+                }
+
+                int[] resultados = stmt.executeBatch();
+                conn.commit();
+
+                int exitosos = contarExitosos(resultados);
+                LOGGER.log(Level.INFO, "[UPSERT-BATCH] {0}/{1} registros acumulados",
+                    new Object[]{exitosos, registros.size()});
+            }
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Batch upsert falló. Rollback...", e);
+            rollbackSilencioso(conn);
+        } finally {
+            restaurarAutoCommit(conn);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Lecturas (sin cambios respecto a v2)
+    // -------------------------------------------------------------------------
+
     @Override
     public List<Registro> obtenerTodosHoy(String usuario) {
         List<Registro> registros = new ArrayList<>();
@@ -164,22 +233,12 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             }
 
         } catch (SQLException e) {
-            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al extraer el historial diario de actividad de la BD", e);
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener historial diario", e);
         }
 
         return registros;
     }
 
-    /**
-     * FIX 2.3: SQL sargable — mismo rango de timestamp que obtenerTodosHoy.
-     *
-     * NOTA SOBRE CATEGORÍAS DE BACKGROUND:
-     * Este método filtra por coincidencia exacta de la categoría pasada como parámetro.
-     * Si se pasa "PRODUCTIVO", NO devolverá registros con categoría "BACKGROUND_PRODUCTIVO".
-     * Las categorías de segundo plano (prefijo BACKGROUND_) se gestionan de forma separada
-     * en el dominio y no están incluidas en los resultados de foco activo.
-     * La UI debe consumir este método sabiendo que solo recibe registros de foco directo.
-     */
     @Override
     public List<Registro> obtenerPorCategoria(String usuario, String categoria) {
         List<Registro> registros = new ArrayList<>();
@@ -204,28 +263,14 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             }
 
         } catch (SQLException e) {
-            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al filtrar registros por categoría en PostgreSQL", e);
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al filtrar por categoría", e);
         }
 
         return registros;
     }
 
-    /**
-     * FIX UI + FIX 2.3: Resumen agrupado por aplicación.
-     *
-     * Cada app aparece UNA SOLA VEZ con su tiempo total acumulado.
-     * SQL: GROUP BY nombre_actividad, categoria + SUM(duracion_seg) + MAX(fecha_registro)
-     *
-     * FIX 2.3: Usa LinkedHashMap para preservar el orden descendente de tiempo total
-     * que PostgreSQL devuelve via ORDER BY. HashMap perdía el orden.
-     *
-     * @param usuario Usuario del sistema operativo
-     * @return Map<nombre_actividad, ResumenActividad> ordenado por tiempo total DESC.
-     *         LinkedHashMap preserva el orden de inserción (orden de la query).
-     */
     @Override
     public Map<String, ResumenActividad> obtenerResumenPorApp(String usuario) {
-        // FIX 2.3: LinkedHashMap preserva el orden de inserción (orden del ORDER BY SQL)
         Map<String, ResumenActividad> resumen = new LinkedHashMap<>();
 
         String sql = """
@@ -262,13 +307,26 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
                 }
             }
 
-            LOGGER.log(Level.FINE, "[PERSISTENCIA] Resumen por app: {0} apps únicas hoy", resumen.size());
+            LOGGER.log(Level.FINE, "[PERSISTENCIA] Resumen: {0} apps hoy", resumen.size());
 
         } catch (SQLException e) {
-            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al generar resumen agrupado por app", e);
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al generar resumen", e);
         }
 
         return resumen;
+    }
+
+    // -------------------------------------------------------------------------
+    // Utilidades privadas
+    // -------------------------------------------------------------------------
+
+    private void setParams(PreparedStatement stmt, Registro reg) throws SQLException {
+        stmt.setString(1, truncar(reg.getUsuarioSistema(), LIMITE_USUARIO));
+        stmt.setString(2, truncar(reg.getNombreActividad(), LIMITE_NOMBRE_ACTIVIDAD));
+        stmt.setString(3, truncar(reg.getCategoria(), LIMITE_CATEGORIA));
+        stmt.setString(4, truncar(reg.getDetalle(), LIMITE_DETALLE));
+        stmt.setLong(5, reg.getDuracionSeg());
+        stmt.setTimestamp(6, Timestamp.valueOf(reg.getFechaRegistro()));
     }
 
     private Registro mapearRegistro(ResultSet rs) throws SQLException {
@@ -281,6 +339,34 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         reg.setDuracionSeg(rs.getLong("duracion_seg"));
         reg.setFechaRegistro(rs.getTimestamp("fecha_registro").toLocalDateTime());
         return reg;
+    }
+
+    private int contarExitosos(int[] resultados) {
+        int exitosos = 0;
+        for (int r : resultados) {
+            if (r >= 0 || r == Statement.SUCCESS_NO_INFO) exitosos++;
+        }
+        return exitosos;
+    }
+
+    private void rollbackSilencioso(Connection conn) {
+        if (conn != null) {
+            try { conn.rollback(); } catch (SQLException ex) {
+                LOGGER.log(Level.SEVERE, "[ERROR] Rollback fallido", ex);
+            }
+        }
+    }
+
+    private void restaurarAutoCommit(Connection conn) {
+        if (conn != null) {
+            try {
+                try (conn) {
+                    conn.setAutoCommit(true);
+                }
+            } catch (SQLException e) {
+                LOGGER.log(Level.WARNING, "[ERROR] Fallo restaurando auto-commit", e);
+            }
+        }
     }
 
     private String truncar(String valor, int maximo) {

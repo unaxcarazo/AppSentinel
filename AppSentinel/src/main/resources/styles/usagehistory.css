@@ -1,7 +1,129 @@
-/*
- * Empty Stylesheet file.
- */
+/* Forzar variables de color en toda la vista */
+.root {
+    -fx-background-color: #0d1117 !important;
+}
 
-.mainFxmlClass {
+.history-upper-container {
+    -fx-background-color: #0d1117 !important;
+    -fx-padding: 25px;
+}
 
+/* Títulos Superiores */
+.history-icon, .history-main-title {
+    -fx-text-fill: #ffffff !important;
+}
+.history-subtitle {
+    -fx-text-fill: #8b949e !important;
+}
+
+/* Cabecera Estilizada (Encabezados claros) */
+.table-header {
+    -fx-background-color: #161b22 !important;
+    -fx-border-color: #30363d !important;
+    -fx-border-width: 0 0 2px 0 !important;
+    -fx-padding: 12px 15px;
+}
+.table-header .label, .table-header .header-cell {
+    -fx-text-fill: #ff7b72 !important; /* Coral claro y visible */
+    -fx-font-weight: bold !important;
+}
+
+/* Forzar el ScrollPane a ser transparente y oscuro */
+.cyber-scroll-pane,
+.cyber-scroll-pane .viewport,
+.cyber-scroll-pane .content {
+    -fx-background-color: #0d1117 !important;
+    -fx-viewport-background-color: #0d1117 !important;
+    -fx-border-color: transparent !important;
+}
+
+.table-body {
+    -fx-background-color: #0d1117 !important;
+}
+
+/* Filas de la tabla (Adiós al fondo blanco) */
+.table-row-custom {
+    -fx-background-color: #161b22 !important;
+    -fx-border-color: #21262d !important;
+    -fx-border-width: 0 0 1px 0 !important;
+    -fx-padding: 14px 15px;
+}
+.table-row-custom:hover {
+    -fx-background-color: #21262d !important;
+}
+
+/* Textos internos claros */
+.table-row-custom .label,
+.table-row-custom .app-name-label,
+.table-row-custom .table-cell-custom {
+    -fx-text-fill: #ffffff !important; /* Forzar todas las letras a blanco */
+}
+
+/* Badges y Estados */
+.badge-work {
+    -fx-background-color: rgba(56, 139, 253, 0.25) !important;
+    -fx-text-fill: #79c0ff !important;
+}
+.badge-distraction {
+    -fx-background-color: rgba(240, 139, 90, 0.25) !important;
+    -fx-text-fill: #ffa657 !important;
+}
+.status-allowed {
+    -fx-text-fill: #3fb950 !important;
+}
+.status-blocked {
+    -fx-text-fill: #ff6b6b !important;
+}
+
+/* Forzar el fondo oscuro del cuerpo de la tabla */
+.table-body {
+    -fx-background-color: #0d1117 !important;
+}
+
+/* Forzar el estilo de las filas individuales */
+.table-row-custom {
+    -fx-background-color: #161b22 !important;
+    -fx-border-color: #21262d !important;
+    -fx-border-width: 0 0 1px 0 !important;
+    -fx-padding: 14px 15px !important;
+}
+
+.table-row-custom:hover {
+    -fx-background-color: #21262d !important;
+}
+
+/* Colores de las fuentes dentro de las filas */
+.table-row-custom .app-name-label {
+    -fx-text-fill: #ffffff !important;
+    -fx-font-size: 14px !important;
+    -fx-font-weight: bold !important;
+}
+
+.table-row-custom .table-cell-custom {
+    -fx-text-fill: #e6edf3 !important;
+    -fx-font-size: 13px !important;
+}
+
+/* ESTADOS DE BLOQUEO (Forzamos los colores neón sobre cualquier estilo base) */
+.table-row-custom .status-allowed {
+    -fx-text-fill: #3fb950 !important; /* Verde brillante */
+    -fx-font-weight: bold !important;
+    -fx-font-size: 13px !important;
+}
+
+.table-row-custom .status-blocked {
+    -fx-text-fill: #ff6b6b !important; /* Rojo brillante */
+    -fx-font-weight: bold !important;
+    -fx-font-size: 13px !important;
+}
+
+/* Badges de categorías */
+.table-row-custom .badge-work {
+    -fx-background-color: rgba(56, 139, 253, 0.25) !important;
+    -fx-text-fill: #79c0ff !important;
+}
+
+.table-row-custom .badge-distraction {
+    -fx-background-color: rgba(240, 139, 90, 0.25) !important;
+    -fx-text-fill: #ffa657 !important;
 }

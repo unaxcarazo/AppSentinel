@@ -182,4 +182,7 @@ public class PostgreSQLCategoriaAdapter implements CategoriaRepositoryPort {
             LOGGER.log(Level.WARNING, "[ERROR] Fallo al insertar la aplicación como SIN_CLASIFICAR", e);
         }
     }
+   
 }
+
+

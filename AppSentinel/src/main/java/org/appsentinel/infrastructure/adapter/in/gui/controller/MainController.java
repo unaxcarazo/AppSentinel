@@ -4,125 +4,85 @@ import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
-import javafx.scene.layout.AnchorPane;
-import org.appsentinel.infrastructure.bootstrap.AppContext;
+import javafx.scene.layout.StackPane; // 🔄 Mantenemos el StackPane líquido que descubrimos antes
 
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.appsentinel.infrastructure.bootstrap.AppContext;
 
 /**
  * MainController: Controlador raíz de la interfaz gráfica.
- *
- * Orquesta el intercambio dinámico de pantallas e inyecta dependencias
- * de forma polimórfica a través de la interfaz Controllable.
- *
- * CICLO DE VIDA DE VISTAS:
- * Al navegar entre pantallas se respeta el contrato completo de Controllable:
- *   1. controladorActual.shutdown() → libera recursos del controlador saliente.
- *   2. nuevoControlador.init(ctx)   → inyecta dependencias al entrante.
- *
- * Esto garantiza que schedulers como el de PerformanceController se paren
- * al salir de esa pantalla y no acumulen hilos huérfanos con cada navegación.
+ * Orquesta el intercambio dinámico de pantallas de forma polimórfica y desacoplada.
  */
 public class MainController {
 
     private static final Logger LOGGER = Logger.getLogger(MainController.class.getName());
 
-    @FXML private AnchorPane contenedor;
+    //   Usamos StackPane en lugar de AnchorPane para que las pantallas del grupo sean 100% responsive
+    @FXML private StackPane contenedor;
 
-    private AppContext  ctx;
-    private Controllable controladorActual;
+    private AppContext ctx;
 
-    /**
-     * Método nativo de JavaFX. Se ejecuta automáticamente
-     * tras la inyección de los componentes FXML.
-     */
     @FXML
     public void initialize() {
         if (contenedor == null) {
-            throw new IllegalStateException(
-                "Error crítico: fx:id=\"contenedor\" no fue inyectado correctamente. " +
-                "Verificar main.fxml.");
+            throw new IllegalStateException("Error crítico: fx:id=\"contenedor\" no fue inyectado correctamente. Verificar main.fxml.");
         }
     }
 
     /**
      * Inyección inicial del contexto global de la aplicación.
-     * Carga de forma segura la pantalla por defecto del sistema.
-     *
-     * @param ctx Grafo de dependencias inmutable con todos los puertos.
+     * Carga de forma segura la pantalla por defecto del sistema de manera asíncrona.
      */
     public void init(AppContext ctx) {
         if (ctx == null) {
-            throw new IllegalArgumentException(
-                "El contexto de la aplicación (AppContext) no puede ser nulo.");
+            throw new IllegalArgumentException("El contexto de la aplicación (AppContext) no puede ser nulo.");
         }
         this.ctx = ctx;
-        Platform.runLater(() -> cargarVista("dashboard"));
+        
+        // Carga el Dashboard de forma segura una vez el hilo de JavaFX esté listo
+        Platform.runLater(() -> cargarVista("Dashboard"));
     }
 
     // =========================================================================
-    // ACCIONES DEL MENÚ LATERAL (@FXML)
+    // ACCIONES DEL MENÚ LATERAL (@FXML) - Coincidiendo con las mayúsculas de tus archivos
     // =========================================================================
-
-    @FXML public void onDashboard()   { cargarVista("dashboard"); }
-    @FXML public void onAppBlocker()  { cargarVista("appblocker"); }
-    @FXML public void onPerformance() { cargarVista("performance"); }
-    @FXML public void onHistory()     { cargarVista("usagehistory"); }
-    @FXML public void onDeepFocus()   { cargarVista("deepfocus"); }
+    @FXML public void onDashboard()   { cargarVista("Dashboard"); }
+    @FXML public void onAppBlocker()  { cargarVista("AppBlocker"); }
+    @FXML public void onPerformance() { cargarVista("Performance"); }
+    @FXML public void onHistory()     { cargarVista("UsageHistory"); }
+    @FXML public void onDeepFocus()   { cargarVista("DeepFocus"); } // Ajustar si es vista o acción directa
 
     // =========================================================================
-    // DESPACHADOR DINÁMICO DE PANTALLAS
+    // DESPACHADOR DINÁMICO DE PANTALLAS (MÉTODO NÚCLEO POLIMÓRFICO)
     // =========================================================================
-
-    /**
-     * Carga una vista FXML por nombre, para el controlador saliente,
-     * instancia el entrante e inyecta el AppContext.
-     *
-     * @param nombre Nombre del archivo .fxml sin extensión (ej: "dashboard").
-     */
     private void cargarVista(String nombre) {
         if (ctx == null) {
-            LOGGER.log(Level.SEVERE,
-                "[ERROR] Intento de navegación ignorado: AppContext no inicializado.");
+            LOGGER.log(Level.SEVERE, "[ERROR] Intento de navegación ignorado: AppContext no inicializado.");
             return;
         }
 
         try {
             FXMLLoader loader = new FXMLLoader(
-                getClass().getResource(
-                    "/org/appsentinel/infrastructure/adapter/in/gui/views/" + nombre + ".fxml"));
-
+                getClass().getResource("/org/appsentinel/infrastructure/adapter/in/gui/views/" + nombre + ".fxml"));
             Parent vista = loader.load();
-            Object ctrl  = loader.getController();
 
-            if (ctrl instanceof Controllable nuevoControlador) {
-
-                // 1. Parar el controlador saliente antes de sustituirlo
-                if (controladorActual != null) {
-                    controladorActual.shutdown();
-                }
-
-                // 2. Inyectar contexto al entrante y guardarlo como actual
-                nuevoControlador.init(ctx);
-                controladorActual = nuevoControlador;
-
+            // 🔀 INYECCIÓN POLIMÓRFICA: Magia SOLID aplicada al grupo
+            Object ctrl = loader.getController();
+            if (ctrl instanceof Controllable controladorUIVisible) {
+                controladorUIVisible.init(ctx); // Se inicializa pasándole el contexto unificado
             } else {
-                LOGGER.log(Level.WARNING,
-                    "[ADVERTENCIA] El controlador de {0} no implementa Controllable.", nombre);
+                LOGGER.log(Level.WARNING, "[ADVERTENCIA] El controlador de {0} no implementa la interfaz Controllable.", nombre);
             }
 
-            AnchorPane.setTopAnchor(vista, 0.0);
-            AnchorPane.setBottomAnchor(vista, 0.0);
-            AnchorPane.setLeftAnchor(vista, 0.0);
-            AnchorPane.setRightAnchor(vista, 0.0);
-
+            // Al usar StackPane, limpiamos el contenido e inyectamos la vista.
+            // Se expande automáticamente al 100% del tamaño disponible sin anclas manuales.
             contenedor.getChildren().setAll(vista);
+            LOGGER.log(Level.INFO, "[OK] Subvista [{0}] incrustada correctamente.", nombre);
 
         } catch (IOException e) {
-            LOGGER.log(Level.SEVERE,
-                "[ERROR CRÍTICO] No se pudo cargar el archivo FXML: {0}", nombre);
+            LOGGER.log(Level.SEVERE, "[ERROR CRÍTICO] No se pudo cargar el archivo FXML: {0}", nombre);
             LOGGER.log(Level.SEVERE, e.getMessage(), e);
         }
     }

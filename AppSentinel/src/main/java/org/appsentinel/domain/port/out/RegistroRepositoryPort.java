@@ -102,4 +102,14 @@ public interface RegistroRepositoryPort {
      * @return Map indexado por {@code nombre_actividad} → {@link ResumenActividad}.
      */
     Map<String, ResumenActividad> obtenerResumenPorApp(String usuario);
+    
+    List<Registro> obtenerTopDistracciones(String usuario, int limite);
+    
+    List<Registro> obtenerTopTrabajo(String usuario, int limite);
+    
+    List<Registro> obtenerActividadHoy(String usuario);
+    
+    List<Registro> obtenerBloqueosHoy(String usuario);
+    
+    List<Registro> obtenerHistorialCompleto();
 }

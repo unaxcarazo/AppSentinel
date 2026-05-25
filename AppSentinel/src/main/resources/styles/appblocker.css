@@ -2,6 +2,132 @@
  * Empty Stylesheet file.
  */
 
+/* --- BASE Y FONDOS --- */
 .mainFxmlClass {
+    -fx-background-color: #06090e;
+    -fx-font-family: "Segoe UI", sans-serif;
+}
 
+/* --- CABECERA --- */
+#tituloSeccion {
+    -fx-text-fill: white;
+    -fx-font-size: 20px; /* Tamaño mínimo para título principal */
+    -fx-font-weight: bold;
+    -fx-font-family: "Segoe UI Black";
+}
+
+#subtituloSeccion {
+    -fx-text-fill: #adb5bd;
+    -fx-font-size: 10px; /* Tamaño ultracompacto */
+    -fx-font-family: "Consolas", monospace;
+    -fx-opacity: 0.8;
+}
+
+/* --- BARRA DE AÑADIR --- */
+.text-field {
+    -fx-background-color: #0b1016;
+    -fx-border-color: #00fbff;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-text-fill: white;
+    -fx-font-size: 10px;
+    -fx-padding: 4 8;
+    -fx-prompt-text-fill: #484f58;
+}
+
+#btnAnadir {
+    -fx-background-color: transparent;
+    -fx-border-color: #00fbff;
+    -fx-border-radius: 4;
+    -fx-border-width: 1;
+    -fx-text-fill: #00fbff;
+    -fx-font-weight: bold;
+    -fx-font-size: 10px;
+    -fx-cursor: hand;
+}
+
+#btnAnadir:hover {
+    -fx-background-color: rgba(0, 251, 255, 0.1);
+}
+
+/* --- PANELES PRINCIPALES --- */
+.panel-trabajo {
+    -fx-background-color: rgba(0, 251, 255, 0.02);
+    -fx-border-color: #00fbff;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+
+.panel-ocio {
+    -fx-background-color: rgba(255, 51, 51, 0.02);
+    -fx-border-color: #ff3333;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+
+/* --- TÍTULOS DE LOS PANELES --- */
+#labelTrabajo, #labelOcio {
+    -fx-text-fill: white;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-font-family: "Segoe UI Black";
+}
+
+/* --- LISTVIEWS --- */
+.list-view {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.list-cell {
+    -fx-background-color: #121820;
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-padding: 5 8;
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-border-color: #06090e;
+    -fx-border-width: 0 0 3 0;
+}
+
+.list-cell:filled:hover {
+    -fx-background-color: #1a222d;
+}
+
+.list-cell:filled:selected {
+    -fx-background-color: rgba(0, 251, 255, 0.2);
+    -fx-border-color: #00fbff;
+    -fx-border-width: 0 0 3 0;
+}
+
+#listaOcio .list-cell:filled:selected {
+    -fx-background-color: rgba(255, 51, 51, 0.2);
+    -fx-border-color: #ff3333;
+}
+
+/* --- BOTONES CENTRALES --- */
+.btn-center {
+    -fx-background-color: transparent;
+    -fx-border-color: #00fbff;
+    -fx-border-width: 1;
+    -fx-border-radius: 4;
+    -fx-text-fill: #00fbff;
+    -fx-font-weight: bold;
+    -fx-font-size: 10px;
+    -fx-cursor: hand;
+}
+
+.btn-center:hover {
+    -fx-background-color: rgba(0, 251, 255, 0.1);
+}
+
+.list-view .scroll-bar:vertical {
+    -fx-background-color: transparent;
+    -fx-pref-width: 5;
+}
+.list-view .scroll-bar .thumb {
+    -fx-background-color: #2a3340;
+    -fx-background-radius: 5;
 }

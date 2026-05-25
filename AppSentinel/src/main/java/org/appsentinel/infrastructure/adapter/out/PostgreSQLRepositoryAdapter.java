@@ -14,26 +14,28 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * PostgreSQLRepositoryAdapter: Adaptador de SALIDA para la persistencia del historial.
+ * PostgreSQLRepositoryAdapter: Adaptador de SALIDA para la persistencia del
+ * historial.
  *
  * ARQUITECTURA HEXAGONAL — Responsabilidad: implementar el contrato del Port
- * usando tecnología PostgreSQL. Contiene toda la lógica de batch, transacciones,
- * y optimizaciones JDBC. El dominio no sabe que existe PostgreSQL.
+ * usando tecnología PostgreSQL. Contiene toda la lógica de batch,
+ * transacciones, y optimizaciones JDBC. El dominio no sabe que existe
+ * PostgreSQL.
  *
- * FIX UPSERT: Implementa guardarOActualizar() con INSERT ... ON CONFLICT DO UPDATE
- * para acumular duración en una sola fila por app por día.
+ * FIX UPSERT: Implementa guardarOActualizar() con INSERT ... ON CONFLICT DO
+ * UPDATE para acumular duración en una sola fila por app por día.
  *
- * FIX BATCH: guardarBatch() y guardarOActualizarBatch() usan executeBatch() nativo
- * de JDBC en transacción atómica. No hay defaults en el Port, toda la lógica está aquí.
+ * FIX BATCH: guardarBatch() y guardarOActualizarBatch() usan executeBatch()
+ * nativo de JDBC en transacción atómica. No hay defaults en el Port, toda la
+ * lógica está aquí.
  *
- * FIX 2.3 (SQL Sargable): Reemplaza DATE(fecha_registro) = CURRENT_DATE por rango
- * de timestamp que aprovecha índices B-Tree.
+ * FIX 2.3 (SQL Sargable): Reemplaza DATE(fecha_registro) = CURRENT_DATE por
+ * rango de timestamp que aprovecha índices B-Tree.
  *
- * ÍNDICES REQUERIDOS:
- *   CREATE INDEX idx_registros_user_fecha ON registros_actividad(usuario_sistema, fecha_registro);
- *   CREATE UNIQUE INDEX idx_registro_unico_dia ON registros_actividad(
- *       usuario_sistema, nombre_actividad, categoria, DATE(fecha_registro)
- *   );
+ * ÍNDICES REQUERIDOS: CREATE INDEX idx_registros_user_fecha ON
+ * registros_actividad(usuario_sistema, fecha_registro); CREATE UNIQUE INDEX
+ * idx_registro_unico_dia ON registros_actividad( usuario_sistema,
+ * nombre_actividad, categoria, DATE(fecha_registro) );
  */
 public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
@@ -47,10 +49,11 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     // -------------------------------------------------------------------------
     // INSERT individual (legacy, para compatibilidad)
     // -------------------------------------------------------------------------
-
     @Override
     public void guardar(Registro registro) {
-        if (registro == null) return;
+        if (registro == null) {
+            return;
+        }
 
         String sql = """
             INSERT INTO registros_actividad
@@ -58,8 +61,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             VALUES (?, ?, ?, ?, ?, ?)
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
             setParams(stmt, registro);
             stmt.executeUpdate();
@@ -71,7 +73,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             }
 
             LOGGER.log(Level.FINE, "[PERSISTENCIA] Registro guardado: {0} ({1}s)",
-                new Object[]{truncar(registro.getNombreActividad(), 50), registro.getDuracionSeg()});
+                    new Object[]{truncar(registro.getNombreActividad(), 50), registro.getDuracionSeg()});
 
         } catch (SQLException e) {
             LOGGER.log(Level.SEVERE, "[ERROR] Fallo al insertar registro de actividad", e);
@@ -81,10 +83,11 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     // -------------------------------------------------------------------------
     // BATCH INSERT (executeBatch nativo de JDBC)
     // -------------------------------------------------------------------------
-
     @Override
     public void guardarBatch(List<Registro> registros) {
-        if (registros == null || registros.isEmpty()) return;
+        if (registros == null || registros.isEmpty()) {
+            return;
+        }
 
         String sql = """
             INSERT INTO registros_actividad
@@ -99,7 +102,9 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 for (Registro reg : registros) {
-                    if (reg == null) continue;
+                    if (reg == null) {
+                        continue;
+                    }
                     setParams(stmt, reg);
                     stmt.addBatch();
                 }
@@ -109,7 +114,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
                 int exitosos = contarExitosos(resultados);
                 LOGGER.log(Level.INFO, "[PERSISTENCIA] Batch insert: {0}/{1} registros",
-                    new Object[]{exitosos, registros.size()});
+                        new Object[]{exitosos, registros.size()});
             }
 
         } catch (SQLException e) {
@@ -123,10 +128,11 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     // -------------------------------------------------------------------------
     // UPSERT individual (INSERT ... ON CONFLICT DO UPDATE)
     // -------------------------------------------------------------------------
-
     @Override
     public void guardarOActualizar(Registro registro) {
-        if (registro == null) return;
+        if (registro == null) {
+            return;
+        }
 
         String sql = """
             INSERT INTO registros_actividad
@@ -139,33 +145,33 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
                 detalle = EXCLUDED.detalle
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             setParams(stmt, registro);
             int filasAfectadas = stmt.executeUpdate();
 
             LOGGER.log(Level.FINE, "[UPSERT] {0} +{1}s (filas: {2})",
-                new Object[]{
-                    truncar(registro.getNombreActividad(), 50),
-                    registro.getDuracionSeg(),
-                    filasAfectadas
-                });
+                    new Object[]{
+                        truncar(registro.getNombreActividad(), 50),
+                        registro.getDuracionSeg(),
+                        filasAfectadas
+                    });
 
         } catch (SQLException e) {
             LOGGER.log(Level.SEVERE,
-                "[ERROR] Upsert falló para {0}: {1}",
-                new Object[]{registro.getNombreActividad(), e.getMessage()});
+                    "[ERROR] Upsert falló para {0}: {1}",
+                    new Object[]{registro.getNombreActividad(), e.getMessage()});
         }
     }
 
     // -------------------------------------------------------------------------
     // BATCH UPSERT (executeBatch con ON CONFLICT)
     // -------------------------------------------------------------------------
-
     @Override
     public void guardarOActualizarBatch(List<Registro> registros) {
-        if (registros == null || registros.isEmpty()) return;
+        if (registros == null || registros.isEmpty()) {
+            return;
+        }
 
         String sql = """
             INSERT INTO registros_actividad
@@ -185,7 +191,9 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 for (Registro reg : registros) {
-                    if (reg == null) continue;
+                    if (reg == null) {
+                        continue;
+                    }
                     setParams(stmt, reg);
                     stmt.addBatch();
                 }
@@ -195,7 +203,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
 
                 int exitosos = contarExitosos(resultados);
                 LOGGER.log(Level.INFO, "[UPSERT-BATCH] {0}/{1} registros acumulados",
-                    new Object[]{exitosos, registros.size()});
+                        new Object[]{exitosos, registros.size()});
             }
 
         } catch (SQLException e) {
@@ -209,7 +217,6 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     // -------------------------------------------------------------------------
     // Lecturas (sin cambios respecto a v2)
     // -------------------------------------------------------------------------
-
     @Override
     public List<Registro> obtenerTodosHoy(String usuario) {
         List<Registro> registros = new ArrayList<>();
@@ -222,8 +229,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             ORDER BY fecha_registro DESC
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setString(1, usuario);
             try (ResultSet rs = stmt.executeQuery()) {
@@ -251,8 +257,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             ORDER BY duracion_seg DESC
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setString(1, usuario);
             stmt.setString(2, categoria);
@@ -287,8 +292,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             ORDER BY tiempo_total_seg DESC
             """;
 
-        try (Connection conn = DatabaseConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
 
             stmt.setString(1, usuario);
             try (ResultSet rs = stmt.executeQuery()) {
@@ -299,10 +303,10 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
                     Timestamp ultimaVez = rs.getTimestamp("ultima_vez");
 
                     resumen.put(nombre, new ResumenActividad(
-                        nombre,
-                        categoria,
-                        tiempoTotal,
-                        ultimaVez != null ? ultimaVez.toLocalDateTime() : null
+                            nombre,
+                            categoria,
+                            tiempoTotal,
+                            ultimaVez != null ? ultimaVez.toLocalDateTime() : null
                     ));
                 }
             }
@@ -316,10 +320,148 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         return resumen;
     }
 
+    @Override
+    public List<Registro> obtenerTopDistracciones(String usuario, int limite) {
+        List<Registro> registros = new ArrayList<>();
+        String sql = """
+            SELECT nombre_actividad, SUM(duracion_seg) as total_seg, categoria 
+            FROM registros_actividad 
+            WHERE usuario_sistema = ? AND categoria = 'DISTRACCION'
+            AND DATE(fecha_registro) = CURRENT_DATE
+            GROUP BY nombre_actividad, categoria
+            ORDER BY total_seg DESC
+            LIMIT ?
+            """;
+        //GROUP BY nombre_actividad, category = categoria -- Nota: Ajustado sintaxis GROUP BY estándar
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+            stmt.setInt(2, limite);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(Registro.builder()
+                            .nombreActividad(rs.getString("nombre_actividad"))
+                            .duracionSeg(rs.getLong("total_seg"))
+                            .categoria(rs.getString("categoria"))
+                            .build());
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener ranking de distracciones", e);
+        }
+        return registros;
+    }
+
+    @Override
+    public List<Registro> obtenerActividadHoy(String usuario) {
+        List<Registro> registros = new ArrayList<>();
+        String sql = """
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+            FROM registros_actividad 
+            WHERE usuario_sistema = ? 
+            AND DATE(fecha_registro) = CURRENT_DATE
+            ORDER BY fecha_registro DESC
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(mapearRegistro(rs));
+                }
+            }
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener la actividad de hoy", e);
+        }
+
+        return registros;
+    }
+
+    @Override
+    public List<Registro> obtenerBloqueosHoy(String usuario) {
+        List<Registro> registros = new ArrayList<>();
+        String sql = """
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+            FROM registros_actividad 
+            WHERE usuario_sistema = ? AND detalle LIKE '%Blocked%'
+            AND DATE(fecha_registro) = CURRENT_DATE
+            ORDER BY fecha_registro DESC
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(mapearRegistro(rs));
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener bloqueos de hoy", e);
+        }
+        return registros;
+    }
+
+    @Override
+    public List<Registro> obtenerTopTrabajo(String usuario, int limite) {
+        List<Registro> registros = new ArrayList<>();
+        String sql = """
+            SELECT nombre_actividad, SUM(duracion_seg) as total_seg, categoria 
+            FROM registros_actividad 
+            WHERE usuario_sistema = ? AND categoria = 'TRABAJO'
+            AND DATE(fecha_registro) = CURRENT_DATE
+            GROUP BY nombre_actividad, categoria
+            ORDER BY total_seg DESC
+            LIMIT ?
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, usuario);
+            stmt.setInt(2, limite);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    registros.add(Registro.builder()
+                            .nombreActividad(rs.getString("nombre_actividad"))
+                            .duracionSeg(rs.getLong("total_seg"))
+                            .categoria(rs.getString("categoria"))
+                            .build());
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo al obtener ranking de trabajo", e);
+        }
+        return registros;
+    }
+
+    @Override
+    public List<Registro> obtenerHistorialCompleto() {
+        List<Registro> historial = new ArrayList<>();
+        String sql = """
+            SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro 
+            FROM registros_actividad 
+            ORDER BY fecha_registro DESC
+            """;
+
+        try (Connection conn = DatabaseConnection.getConnection(); PreparedStatement stmt = conn.prepareStatement(sql); ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                historial.add(mapearRegistro(rs));
+            }
+
+        } catch (SQLException e) {
+            LOGGER.log(Level.SEVERE, "[ERROR] Fallo crítico al obtener el historial completo de PostgreSQL", e);
+        }
+
+        return historial;
+    }
+
     // -------------------------------------------------------------------------
     // Utilidades privadas
     // -------------------------------------------------------------------------
-
     private void setParams(PreparedStatement stmt, Registro reg) throws SQLException {
         stmt.setString(1, truncar(reg.getUsuarioSistema(), LIMITE_USUARIO));
         stmt.setString(2, truncar(reg.getNombreActividad(), LIMITE_NOMBRE_ACTIVIDAD));
@@ -344,14 +486,18 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     private int contarExitosos(int[] resultados) {
         int exitosos = 0;
         for (int r : resultados) {
-            if (r >= 0 || r == Statement.SUCCESS_NO_INFO) exitosos++;
+            if (r >= 0 || r == Statement.SUCCESS_NO_INFO) {
+                exitosos++;
+            }
         }
         return exitosos;
     }
 
     private void rollbackSilencioso(Connection conn) {
         if (conn != null) {
-            try { conn.rollback(); } catch (SQLException ex) {
+            try {
+                conn.rollback();
+            } catch (SQLException ex) {
                 LOGGER.log(Level.SEVERE, "[ERROR] Rollback fallido", ex);
             }
         }
@@ -370,7 +516,9 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
     }
 
     private String truncar(String valor, int maximo) {
-        if (valor == null) return null;
+        if (valor == null) {
+            return null;
+        }
         return valor.length() > maximo ? valor.substring(0, maximo) : valor;
     }
 }

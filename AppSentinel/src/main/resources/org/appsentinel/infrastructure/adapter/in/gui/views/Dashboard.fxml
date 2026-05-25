@@ -13,7 +13,12 @@
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
 
-<ScrollPane fx:id="rootPane" fitToHeight="true" fitToWidth="true" hbarPolicy="NEVER" style="-fx-background-color: #0d1117;" vbarPolicy="AS_NEEDED" xmlns="http://javafx.com/javafx/26" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.appsentinel.infrastructure.adapter.in.gui.controller.DashboardController">   
+<ScrollPane fx:id="rootPane" fitToHeight="true" 
+            fitToWidth="true" hbarPolicy="NEVER" 
+            style="-fx-background-color: #0d1117;" 
+            vbarPolicy="AS_NEEDED" xmlns="http://javafx.com/javafx/26" 
+            xmlns:fx="http://javafx.com/fxml/1" 
+            fx:controller="org.appsentinel.infrastructure.adapter.in.gui.controller.DashboardController">   
     <content>
         <VBox spacing="20" styleClass="dashboard-container">
             <children>

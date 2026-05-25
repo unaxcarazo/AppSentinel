@@ -10,14 +10,14 @@
 
 /* --- CABECERA --- */
 #tituloSeccion {
-    -fx-text-fill: white;
+    -fx-text-fill: #FFFFFF;
     -fx-font-size: 20px; /* Tamaño mínimo para título principal */
     -fx-font-weight: bold;
-    -fx-font-family: "Segoe UI Black";
+    -fx-font-family: "Courier New";
 }
 
 #subtituloSeccion {
-    -fx-text-fill: #adb5bd;
+    -fx-text-fill: #FFFFFF;
     -fx-font-size: 10px; /* Tamaño ultracompacto */
     -fx-font-family: "Consolas", monospace;
     -fx-opacity: 0.8;
@@ -72,7 +72,7 @@
     -fx-text-fill: white;
     -fx-font-size: 10px;
     -fx-font-weight: bold;
-    -fx-font-family: "Segoe UI Black";
+    -fx-font-family: "Courier New";
 }
 
 /* --- LISTVIEWS --- */

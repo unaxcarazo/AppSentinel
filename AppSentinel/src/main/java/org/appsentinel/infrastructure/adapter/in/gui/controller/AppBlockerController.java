@@ -1,19 +1,17 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/javafx/FXMLController.java to edit this template
- */
 package org.appsentinel.infrastructure.adapter.in.gui.controller;
 
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.control.Button;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextField;
 import java.net.URL;
-import java.time.Instant;
 import java.util.ResourceBundle;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 // Importaciones de la arquitectura hexagonal de AppSentinel
 import org.appsentinel.domain.port.out.KillerPort;
@@ -21,12 +19,12 @@ import org.appsentinel.domain.port.out.CategoriaRepositoryPort;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
 
 /**
- * FXML Controller class para la sección App Blocker. Gestiona de forma reactiva
- * la interfaz de usuario comunicándose con el Dominio.
- *
- * @author DAW1
+ * FXML Controller class para la sección App Blocker. Inyecta dinámicamente la
+ * hoja de estilos CSS y coordina la persistencia de categorías.
  */
 public class AppBlockerController implements Initializable, Controllable {
+
+    private static final Logger LOGGER = Logger.getLogger(AppBlockerController.class.getName());
 
     // Puertos de salida reales inyectados desde la infraestructura de la aplicación
     private KillerPort killerService;
@@ -47,46 +45,78 @@ public class AppBlockerController implements Initializable, Controllable {
     @FXML
     private Button btnPasarATrabajo;
 
+    // Listas observables mapeadas para un rendimiento fluido y reactivo
+    private final ObservableList<String> obsTrabajo = FXCollections.observableArrayList();
+    private final ObservableList<String> obsOcio = FXCollections.observableArrayList();
+
     @Override
     public void initialize(URL url, ResourceBundle rb) {
-        // Inicialización puramente estética en el arranque de la vista
-        System.out.println("[GUI] AppBlocker inicializado visualmente.");
+        // Enlazamos de forma definitiva las ListViews con nuestras listas observables
+        if (listaTrabajo != null) {
+            listaTrabajo.setItems(obsTrabajo);
+        }
+        if (listaOcio != null) {
+            listaOcio.setItems(obsOcio);
+        }
+        LOGGER.log(Level.INFO, "[GUI] AppBlocker inicializado visualmente.");
     }
 
     /**
-     * REGLA OBLIGATORIA: Método de entrada que recibe el grafo de dependencias.
-     * Vincula el controlador con la capa del dominio de la aplicación.
+     * Configura el controlador con el contexto global y fuerza la inyección del
+     * CSS.
      */
     @Override
     public void init(AppContext ctx) {
-        System.out.println("[CONTROLLER] Configurando AppBlocker con el contexto global...");
-
-        // Inyección de los servicios reales extraídos del record de configuración global
         this.killerService = ctx.killer();
         this.categoriaService = ctx.categorias();
 
-        // REGLA OBLIGATORIA: Carga delegada al hilo prioritario de JavaFX Application Thread
+        // Carga delegada de datos e inyección de CSS al hilo prioritario de JavaFX
         Platform.runLater(() -> {
+            cargarCssDinamico();
             cargarDatosIniciales();
         });
     }
 
     /**
-     * Recupera las listas del almacén de persistencia real y actualiza la
-     * vista.
+     * 🔥 LA CLAVE: Detecta el contenedor de la escena e inyecta la hoja de
+     * estilos si falta
+     */
+    private void cargarCssDinamico() {
+        if (txtNuevaApp != null && txtNuevaApp.getScene() != null) {
+            var root = txtNuevaApp.getScene().getRoot();
+            if (!root.getStylesheets().contains("/styles/appblocker.css")) {
+                String rutaCss = getClass().getResource("/styles/appblocker.css").toExternalForm();
+                root.getStylesheets().add(rutaCss);
+                LOGGER.log(Level.INFO, "[CSS] appblocker.css inyectado con éxito en el nodo raíz.");
+            }
+        }
+    }
+
+    /**
+     * Recupera las listas del almacén de persistencia real y actualiza la vista
+     * de forma segura.
      */
     private void cargarDatosIniciales() {
-        System.out.println("[DOMINIO] Preparando la carga real de datos...");
+        if (categoriaService != null) {
+            try {
+                java.util.List<String> appsTrabajo = categoriaService.obtenerAppsPorCategoria("Trabajo");
+                java.util.List<String> appsOcio = categoriaService.obtenerAppsPorCategoria("Ocio");
 
-        // Obtenemos los conjuntos de datos persistidos en la base de datos según su rol
-        java.util.List<String> appsTrabajo = categoriaService.obtenerAppsPorCategoria("Trabajo");
-        java.util.List<String> appsOcio = categoriaService.obtenerAppsPorCategoria("Ocio");
+                obsTrabajo.clear();
+                if (appsTrabajo != null) {
+                    obsTrabajo.addAll(appsTrabajo);
+                }
 
-        // Enlazamos las colecciones devueltas con las ListViews correspondientes de JavaFX
-        listaTrabajo.setItems(FXCollections.observableArrayList(appsTrabajo));
-        listaOcio.setItems(FXCollections.observableArrayList(appsOcio));
+                obsOcio.clear();
+                if (appsOcio != null) {
+                    obsOcio.addAll(appsOcio);
+                }
 
-        System.out.println("[GUI] Listas sincronizadas correctamente con la base de datos.");
+                LOGGER.log(Level.INFO, "[GUI] Listas sincronizadas con la base de datos.");
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error al cargar categorías iniciales", e);
+            }
+        }
     }
 
     /**
@@ -96,59 +126,55 @@ public class AppBlockerController implements Initializable, Controllable {
     private void handleAnadirApp() {
         String appName = txtNuevaApp.getText().trim();
 
-        if (!appName.isEmpty()) {
-            // Actualización de la lista visual
-            listaOcio.getItems().add(appName);
-
-            // Envío de la orden de interrupción al sistema operativo mediante el Killer
-            killerService.cerrarProceso(appName, 0, Instant.MIN);
-
-            // Guardado persistente del cambio de categoría en la base de datos
+        if (!appName.isEmpty() && categoriaService != null && killerService != null) {
+            if (!obsOcio.contains(appName)) {
+                obsOcio.add(appName);
+            }
+            killerService.cerrarProceso(appName, 0);
             categoriaService.guardarCategoria(appName, "Ocio");
 
             txtNuevaApp.clear();
-            System.out.println("[ACTION] App '" + appName + "' añadida a Ocio, proceso abortado y guardado persistido.");
+            LOGGER.log(Level.INFO, "[ACTION] App ''{0}'' añadida a Ocio.", appName);
         }
     }
 
     /**
-     * Transfiere una aplicación de la lista permitida (Trabajo) a la bloqueada
-     * (Ocio).
+     * Transfiere una aplicación de Trabajo a Ocio de manera segura.
      */
     @FXML
     private void handlePasarAOcio() {
         String selected = listaTrabajo.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            // Movimiento visual entre componentes
-            listaTrabajo.getItems().remove(selected);
-            listaOcio.getItems().add(selected);
+        if (selected != null && categoriaService != null && killerService != null) {
+            obsTrabajo.remove(selected);
+            if (!obsOcio.contains(selected)) {
+                obsOcio.add(selected);
+            }
 
-            // Forzar el cierre inmediato del proceso recién penalizado
-            killerService.cerrarProceso(selected,0, Instant.MIN);
-
-            // Sincronizar de manera permanente la nueva categoría en el repositorio
+            killerService.cerrarProceso(selected, 0);
             categoriaService.guardarCategoria(selected, "Ocio");
-            System.out.println("[ACTION] '" + selected + "' reclasificada como Ocio y bloqueada.");
+            LOGGER.log(Level.INFO, "[ACTION] ''{0}'' movida a Ocio y bloqueada.", selected);
         }
     }
 
     /**
-     * Revoca el bloqueo de una aplicación transfiriéndola a la lista blanca
-     * (Trabajo).
+     * Revoca el bloqueo de una aplicación transfiriéndola a Trabajo.
      */
     @FXML
     private void handlePasarATrabajo() {
         String selected = listaOcio.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            // Movimiento visual entre componentes
-            listaOcio.getItems().remove(selected);
-            listaTrabajo.getItems().add(selected);
+        if (selected != null && categoriaService != null) {
+            obsOcio.remove(selected);
+            if (!obsTrabajo.contains(selected)) {
+                obsTrabajo.add(selected);
+            }
 
-            // Sincronizar el indulto de la aplicación en el repositorio de base de datos
-            // AQUÍ SE CORRIGIÓ EL ERROR: 'selected' bien escrito juntos sin espacios
             categoriaService.guardarCategoria(selected, "Trabajo");
-            System.out.println("[ACTION] '" + selected + "' indultada y reclasificada como Trabajo.");
+            LOGGER.log(Level.INFO, "[ACTION] ''{0}'' indultada y movida a Trabajo.", selected);
         }
     }
+
+    @Override
+    public void shutdown() {
+        LOGGER.log(Level.INFO, "[GUI] AppBlocker cerrado correctamente.");
+    }
 }
-        

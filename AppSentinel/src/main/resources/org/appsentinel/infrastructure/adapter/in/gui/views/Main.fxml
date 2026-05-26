@@ -30,11 +30,7 @@
                         maxWidth="500.0"
                         onAction="#onAppBlocker"/>
                         
-                <Button fx:id="btnDeepFocus"
-                        text="🎯 Deep Focus Area"
-                        styleClass="menu-button"
-                        maxWidth="500.0"
-                        onAction="#onDeepFocus"/>
+                
                         
                 <Button fx:id="btnPerformance"
                         text="📉 Performance &amp; Processes"
@@ -50,11 +46,7 @@
                         
                 <Region VBox.vgrow="ALWAYS" />
                 
-                <Button fx:id="btnDeepFocus"
-                        text="🛡️ START DEEP FOCUS"
-                        styleClass="deep-focus-button-orange" 
-                        onAction="#onDeepFocus"
-                        maxWidth="500.0"/>
+            
                         
             </children>
         </VBox>

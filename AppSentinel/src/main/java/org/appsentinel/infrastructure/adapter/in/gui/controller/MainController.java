@@ -74,21 +74,7 @@ public class MainController {
 
     @FXML
     public void onDeepFocus() {
-        try {
-            // 1. Cargamos el archivo FXML de Deep Focus
-            javafx.fxml.FXMLLoader loader = new javafx.fxml.FXMLLoader(getClass().getResource("/fxml/deep_focus.fxml"));
-            javafx.scene.Parent deepFocusView = loader.load();
-
-            // 2. Limpiamos el panel de la derecha (donde están los logs de actividad)
-            contenedor.getChildren().clear();
-
-            // 3. Inyectamos la nueva vista de Deep Focus en el centro
-            contenedor.getChildren().add(deepFocusView);
-
-        } catch (Exception e) {
-            System.err.println("Error al cargar la pantalla de Deep Focus: " + e.getMessage());
-            e.printStackTrace();
-        }
+        cargarVista("DeepFocus");
     } // Ajustar si es vista o acción directa
 
     // =========================================================================

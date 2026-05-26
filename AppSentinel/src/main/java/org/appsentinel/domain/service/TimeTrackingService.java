@@ -64,7 +64,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
     private final Object lockLimpieza = new Object();
 
-    private static final int GRACIA_ESTRICTO_SEG      = 10;
+    private static final int GRACIA_ESTRICTO_SEG      = 600;
     private static final int SEGUNDOS_AUSENCIA_USUARIO = 300;
     private static final int SEGUNDOS_SIN_RASTRO       = 120;
 

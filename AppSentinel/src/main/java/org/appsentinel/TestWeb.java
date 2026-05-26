@@ -1,7 +1,6 @@
 package org.appsentinel;
 
 import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
-import org.appsentinel.infrastructure.bootstrap.AppContext;
 import org.appsentinel.infrastructure.bootstrap.AppWiring;
 
 /**

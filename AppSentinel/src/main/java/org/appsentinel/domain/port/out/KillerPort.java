@@ -7,4 +7,6 @@ package org.appsentinel.domain.port.out;
 public interface KillerPort {
     boolean cerrarProceso(String nombreProceso, int pid);
     void cerrarPestañaNavegador(int tabId);
+
+    public void cerrarProceso(String selected);
 }

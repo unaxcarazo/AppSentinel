@@ -128,4 +128,9 @@ public class ProcessKillerAdapter implements KillerPort {
         if (nombre == null || nombre.isBlank()) return "";
         return nombre.toLowerCase().replace(".exe", "").trim();
     }
+
+    @Override
+    public void cerrarProceso(String selected) {
+        throw new UnsupportedOperationException("Not supported yet."); // Generated from nbfs://nbhost/SystemFileSystem/Templates/Classes/Code/GeneratedMethodBody
+    }
 }

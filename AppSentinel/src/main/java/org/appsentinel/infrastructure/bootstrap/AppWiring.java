@@ -2,9 +2,11 @@ package org.appsentinel.infrastructure.bootstrap;
 
 import org.appsentinel.domain.service.DistractionDetector;
 import org.appsentinel.domain.service.MantenimientoDiarioService;
+import org.appsentinel.domain.service.ReporteDiarioService;
 import org.appsentinel.domain.service.TimeTrackingService;
 import org.appsentinel.infrastructure.adapter.in.ProcessWindowMonitorAdapter;
 import org.appsentinel.infrastructure.adapter.in.WebSocketAdapter;
+import org.appsentinel.infrastructure.adapter.out.HtmlReportAdapter;
 import org.appsentinel.infrastructure.adapter.out.JavaFXAlertAdapter;
 import org.appsentinel.infrastructure.adapter.out.OshiRendimientoAdapter;
 import org.appsentinel.infrastructure.adapter.out.PostgreSQLCategoriaAdapter;
@@ -20,19 +22,20 @@ import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection
  * Instancia todos los adaptadores, los conecta con el dominio a través
  * de los puertos correspondientes y devuelve un AppContext inmutable.
  *
- * FIX: Añade MantenimientoDiarioService para limpieza automática diaria
- * de la BD, funcionando en ambos modos (GUI y headless).
+ * FIX: ReporteDiarioService genera DelayLog.html al cerrar la aplicación
+ * con datos reales del usuario (cualquier usuario, no hardcodeado).
  *
- * FIX: detenerTodo() cierra el pool HikariCP para evitar fugas de
- * conexiones en el shutdown de JavaFX.
+ * FIX: detenerTodo() genera el informe ANTES de cerrar el pool de conexiones.
+ * El orden de shutdown garantiza que los datos del día se persistan en HTML
+ * antes de que MantenimientoDiarioService limpie la BD a medianoche.
  */
 public class AppWiring {
 
-    // Referencias estáticas para coordinar el apagado limpio
     private static WebSocketAdapter             webSocketInstance;
     private static ProcessWindowMonitorAdapter  monitorInstance;
     private static TimeTrackingService          trackingInstance;
     private static MantenimientoDiarioService   mantenimientoInstance;
+    private static ReporteDiarioService         reporteInstance;
 
     public static AppContext construir() {
 
@@ -55,12 +58,12 @@ public class AppWiring {
             detector,
             repo,
             notificacion,
-            null,  // killer se inyecta después de construir WebSocketAdapter
+            null,
             AppConfig.getSegundosAvisoPreventivo(),
             AppConfig.getSegundosBloqueoSesion(),
             AppConfig.getSegundosPausaReenfoque(),
             AppConfig.isModoEstricto(),
-            AppConfig.getUsuarioSistema()
+            AppConfig.getUsuarioSistema()  // ← Cualquier usuario del sistema
         );
         trackingInstance = tracking;
 
@@ -72,38 +75,36 @@ public class AppWiring {
         ProcessKillerAdapter killer = new ProcessKillerAdapter(webSocket);
         tracking.setKiller(killer);
 
+        // ========== REPORTE DIARIO ==========
+        HtmlReportAdapter htmlAdapter = new HtmlReportAdapter(AppConfig.isModoEstricto());
+        ReporteDiarioService reporte = new ReporteDiarioService(
+            repo,
+            htmlAdapter,
+            AppConfig.getUsuarioSistema()  // ← Dinámico: funciona con cualquier usuario
+        );
+        reporteInstance = reporte;
+
         // ========== SENSOR DE ENTRADA ==========
         ProcessWindowMonitorAdapter monitor = new ProcessWindowMonitorAdapter(tracking);
         monitor.iniciar();
         monitorInstance = monitor;
 
-        // ========== CONTEXTO: SOLO PUERTOS, NO ADAPTADORES CONCRETOS ==========
         return new AppContext(
-            tracking,      // TimeTrackingService (MonitorPort, BrowserEventPort)
-            repo,          // RegistroRepositoryPort
-            categorias,    // CategoriaRepositoryPort
-            notificacion,  // NotificacionPort
-            killer,        // KillerPort
-            rendimiento,   // RendimientoSistemaPort
-            tracking,      // FocoActivoPort (misma instancia, rol distinto)
-            mantenimiento  // MantenimientoDiarioService (nuevo)
+            tracking, repo, categorias, notificacion, killer,
+            rendimiento, tracking, mantenimiento
         );
     }
 
     /**
-     * Detiene todos los hilos de infraestructura en el orden correcto:
-     * 1. Mantenimiento diario — para la limpieza programada.
-     * 2. Monitor de procesos — deja de escanear el OS.
-     * 3. WebSocket — cierra el puerto 8080.
-     * 4. Tracking — persiste los chunks pendientes y para el scheduler.
-     * 5. Pool de conexiones — libera conexiones HikariCP.
+     * Orden de apagado crítico para garantizar integridad de datos:
+     * 1. Parar monitor y WebSocket (dejar de recibir eventos).
+     * 2. Flush final de tracking a PostgreSQL (UPSERT acumulado).
+     * 3. Generar informe HTML con datos reales del día.
+     * 4. Parar mantenimiento diario (evita que limpie durante el reporte).
+     * 5. Cerrar pool HikariCP.
      */
     public static void detenerTodo() {
         System.out.println("[SHUTDOWN] Iniciando apagado limpio...");
-
-        if (mantenimientoInstance != null) {
-            mantenimientoInstance.detener();
-        }
 
         if (monitorInstance != null) {
             monitorInstance.detener();
@@ -113,11 +114,22 @@ public class AppWiring {
             webSocketInstance.detener();
         }
 
+        // FIX: Flush final a PostgreSQL ANTES de generar informe
         if (trackingInstance != null) {
             trackingInstance.finalizar();
         }
 
-        // FIX: Cerrar pool HikariCP para evitar fugas de conexiones
+        // FIX: Generar informe HTML con datos reales del usuario actual
+        if (reporteInstance != null) {
+            System.out.println("[SHUTDOWN] Generando informe diario...");
+            reporteInstance.generarInformeHoyDefault();
+        }
+
+        // FIX: Parar mantenimiento DESPUÉS del reporte para evitar condición de carrera
+        if (mantenimientoInstance != null) {
+            mantenimientoInstance.detener();
+        }
+
         DatabaseConnection.cerrarPool();
 
         System.out.println("[SHUTDOWN] Sistema apagado correctamente.");

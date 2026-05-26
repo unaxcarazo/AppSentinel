@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>testuser — Informe de Rendimiento</title>
+    <link rel="stylesheet" href="styles.css">
+    <base target="_blank">
+</head>
+<body>
+
+    <div class="container">
+        <!-- ENCABEZADO TERMINAL -->
+        <header class="main-header">
+            <h1>EXTREMA - PANEL DE RENDIMIENTO VISUAL</h1>
+            <div class="meta-info">
+                Fecha: <span>lun, 25 may</span> <span class="separator">|</span> Estado: <span>Modo Estricto</span>
+            </div>
+            <div class="header-line"></div>
+        </header>
+
+        <!-- SECCIÓN DE GRÁFICO DE DISTRIBUCIÓN GENERAL -->
+        <section class="distribution-section">
+            <div class="distribution-card">
+                <div class="dist-header">
+                    <span class="dist-title">DISTRIBUCIÓN DEL TIEMPO TOTAL (05h 55m)</span>
+                    <span class="dist-percentage">100% ASIGNADO</span>
+                </div>
+                <div class="progress-timeline-bar">
+                    <div class="bar-segment seg-productive" style="width: 46%;" title="Productivo: 46%"></div>
+                    <div class="bar-segment seg-distractions" style="width: 23%;" title="Distracciones: 23%"></div>
+                    <div class="bar-segment seg-neutral" style="width: 3%;" title="Neutral: 3%"></div>
+                    <div class="bar-segment seg-background" style="width: 28%;" title="Segundo Plano: 28%"></div>
+                </div>
+                <div class="dist-legend">
+                    <div class="legend-item"><span class="dot dot-productive"></span> Productivo (46%)</div>
+                    <div class="legend-item"><span class="dot dot-distractions"></span> Distracciones (23%)</div>
+                    <div class="legend-item"><span class="dot dot-neutral"></span> Neutral (3%)</div>
+                    <div class="legend-item"><span class="dot dot-background"></span> Segundo Plano (28%)</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TARJETAS DE CONTADORES PRINCIPALES -->
+        <section class="counters-row">
+            <div class="card-counter">
+                <span class="counter-label label-total">TIEMPO TOTAL</span>
+                <div class="counter-value">05h 55m</div>
+            </div>
+
+            <div class="card-counter highlight-productive-card">
+                <span class="counter-label label-productive">TIEMPO PRODUCTIVO</span>
+                <div class="counter-value">02h 45m</div>
+            </div>
+
+            <div class="card-counter highlight-distractions-card">
+                <span class="counter-label label-distractions">DISTRACCIONES</span>
+                <div class="counter-value">01h 20m</div>
+            </div>
+
+            <div class="card-counter">
+                <span class="counter-label label-neutral">TIEMPO NEUTRAL</span>
+                <div class="counter-value">10m 00s</div>
+            </div>
+
+            <div class="card-counter">
+                <span class="counter-label label-background">SEGUNDO PLANO</span>
+                <div class="counter-value">01h 40m</div>
+            </div>
+
+            <div class="card-counter card-count">
+                <span class="counter-label label-count">TOTAL APPS</span>
+                <div class="counter-value">8</div>
+            </div>
+        </section>
+
+        <!-- SECCIÓN DE GRID DE LISTAS -->
+        <section class="lists-grid">
+
+            <div class="card-list highlighted-box-productive">
+                <h2 class="list-title title-productive">TOP APPS PRODUCTIVAS</h2>
+                <ul class="app-list">
+                    <li class="app-item-vertical"><div class="app-info-row"><span><span class="app-index">01.</span><span class="app-name">IntelliJ IDEA</span></span><span class="app-time">02h 00m</span></div><div class="app-mini-bar"><div class="mini-fill fill-productive" style="width: 100%;"></div></div></li><li class="app-item-vertical"><div class="app-info-row"><span><span class="app-index">02.</span><span class="app-name">Terminal</span></span><span class="app-time">30m 00s</span></div><div class="app-mini-bar"><div class="mini-fill fill-productive" style="width: 25%;"></div></div></li><li class="app-item-vertical"><div class="app-info-row"><span><span class="app-index">03.</span><span class="app-name">Chrome</span></span><span class="app-time">15m 00s</span></div><div class="app-mini-bar"><div class="mini-fill fill-productive" style="width: 13%;"></div></div></li>
+                </ul>
+            </div>
+
+            <div class="card-list highlighted-box-distractions">
+                <h2 class="list-title title-distractions">TOP DISTRACCIONES</h2>
+                <ul class="app-list">
+                    <li class="app-item-vertical"><div class="app-info-row"><span><span class="app-index">01.</span><span class="app-name">Discord</span></span><span class="app-time">01h 00m</span></div><div class="app-mini-bar"><div class="mini-fill fill-distractions" style="width: 100%;"></div></div></li><li class="app-item-vertical"><div class="app-info-row"><span><span class="app-index">02.</span><span class="app-name">YouTube</span></span><span class="app-time">20m 00s</span></div><div class="app-mini-bar"><div class="mini-fill fill-distractions" style="width: 33%;"></div></div></li>
+                </ul>
+            </div>
+
+            <div class="card-list">
+                <h2 class="list-title title-neutral">TOP APPS NEUTRALES</h2>
+                <ul class="app-list">
+                    <li class="app-item-vertical"><div class="app-info-row"><span><span class="app-index">01.</span><span class="app-name">Explorador</span></span><span class="app-time">10m 00s</span></div><div class="app-mini-bar"><div class="mini-fill fill-neutral" style="width: 100%;"></div></div></li>
+                </ul>
+            </div>
+
+            <div class="card-list">
+                <h2 class="list-title title-background">TOP SEGUNDO PLANO</h2>
+                <ul class="app-list">
+                    <li class="app-item-vertical"><div class="app-info-row"><span><span class="app-index">01.</span><span class="app-name">Docker Desktop</span></span><span class="app-time">01h 00m</span></div><div class="app-mini-bar"><div class="mini-fill fill-background" style="width: 100%;"></div></div></li><li class="app-item-vertical"><div class="app-info-row"><span><span class="app-index">02.</span><span class="app-name">Spotify</span></span><span class="app-time">40m 00s</span></div><div class="app-mini-bar"><div class="mini-fill fill-background" style="width: 67%;"></div></div></li>
+                </ul>
+            </div>
+
+        </section>
+    </div>
+
+</body>
+</html>

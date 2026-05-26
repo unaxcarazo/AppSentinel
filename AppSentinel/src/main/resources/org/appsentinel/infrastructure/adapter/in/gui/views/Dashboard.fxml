@@ -167,54 +167,6 @@
                         </VBox>
                     </VBox>
                 </HBox>
-              
-                <HBox spacing="20" VBox.vgrow="ALWAYS">
-                    <VBox minWidth="200" styleClass="card-base" HBox.hgrow="ALWAYS">
-                        <Label styleClass="section-header-small" text="RECENT ACTIVITY LOG" />
-                        <VBox fx:id="vboxActivityLog" spacing="15" style="-fx-padding: 10 0 0 0;" VBox.vgrow="ALWAYS">
-                            <HBox alignment="CENTER_LEFT" spacing="15">
-                                <StackPane minWidth="-Infinity">
-                                    <styleClass>
-                                        <String fx:value="icon-box" />
-                                        <String fx:value="icon-box-cian" />
-                                    </styleClass>
-                                    <children>
-                                        <Label style="-fx-font-size: 14;" text="💻" />
-                                    </children>
-                                </StackPane>
-                                <VBox minWidth="0" HBox.hgrow="ALWAYS">
-                                    <Label minWidth="0" styleClass="log-app-title" text="VS Code" />
-                                    <Label minWidth="0" styleClass="log-subtext" text="Started: 14:15" />
-                                </VBox>
-                                <Region HBox.hgrow="ALWAYS" />
-                                <Label minWidth="-Infinity" styleClass="log-duration" text="45m" />
-                            </HBox>
-                        </VBox>
-                    </VBox>
-      
-                    <VBox minWidth="200" styleClass="card-base" HBox.hgrow="ALWAYS">
-                        <Label styleClass="section-header-small" text="BLOCKING LOG" />
-                        <VBox fx:id="vboxBlockingLog" spacing="15" style="-fx-padding: 10 0 0 0;" VBox.vgrow="ALWAYS">
-                            <HBox alignment="CENTER_LEFT" spacing="15">
-                                <StackPane minWidth="-Infinity">
-                                    <styleClass>
-                                        <String fx:value="icon-box" />
-                                        <String fx:value="icon-box-naranja" />
-                                    </styleClass>
-                                    <children>
-                                        <Label style="-fx-font-size: 14;" text="🚫" />
-                                    </children>
-                                </StackPane>
-                                <VBox minWidth="0" HBox.hgrow="ALWAYS">
-                                    <Label minWidth="0" styleClass="log-app-title" text="Instagram" />
-                                    <Label minWidth="0" styleClass="log-subtext" text="Blocked attempt at 14:30" />
-                                </VBox>
-                                <Region HBox.hgrow="ALWAYS" />
-                                <Label minWidth="-Infinity" styleClass="badge-blocked" text="BLOCKED" />
-                            </HBox>
-                        </VBox>
-                    </VBox>
-                </HBox>
 
             </children>
         </VBox>

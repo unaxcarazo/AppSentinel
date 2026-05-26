@@ -77,7 +77,7 @@ public class AppConfig {
     // ============================================
     
     public static int getEscaneoIntervaloSegundos() {
-        return parsearEnteroPositivo("scan.interval", 10);
+        return parsearEnteroPositivo("scan.interval", 60);
     }
     
     // ============================================

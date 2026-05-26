@@ -23,48 +23,82 @@
 }
 
 /* ----------- TEXTOS Y CABECERAS ----------- */
-.dashboard-main-title { -fx-text-fill: -color-text-main; -fx-font-size: 28px; -fx-font-weight: bold; }
-.dashboard-subtitle { -fx-text-fill: -color-text-muted; -fx-font-size: 14px; -fx-font-family: "Courier New"; }
-.section-header { -fx-text-fill: -color-text-main; -fx-font-size: 16px; -fx-font-weight: bold; -fx-padding: 0 0 10 0; }
-.section-header-small { -fx-text-fill: -color-text-muted; -fx-font-size: 11px; -fx-font-weight: bold; -fx-padding: 0 0 15 0; }
+.dashboard-main-title {
+    -fx-text-fill: -color-text-main;
+    -fx-font-size: 28px;
+    -fx-font-weight: bold;
+}
+.dashboard-subtitle {
+    -fx-text-fill: -color-text-muted;
+    -fx-font-size: 14px;
+    -fx-font-family: "Courier New";
+}
+.section-header {
+    -fx-text-fill: -color-text-main;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 0 10 0;
+}
+.section-header-small {
+    -fx-text-fill: -color-text-muted;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 0 0 15 0;
+}
 
-.text-cian { -fx-text-fill: -color-cian; }
-.text-naranja { -fx-text-fill: -color-naranja; }
+.text-cian {
+    -fx-text-fill: -color-cian;
+}
+.text-naranja {
+    -fx-text-fill: -color-naranja;
+}
 
 
 /* ----------- COMPONENTES ESPECÍFICOS (KPIs) ----------- */
-.work-card { -fx-border-color: -color-cian; }
-.distraction-card { -fx-border-color: -color-naranja; }
+.work-card {
+    -fx-border-color: -color-cian;
+}
+.distraction-card {
+    -fx-border-color: -color-naranja;
+}
 
-.kpi-title { -fx-text-fill: -color-text-muted; -fx-font-size: 12px; -fx-font-weight: bold; }
-.kpi-value { -fx-text-fill: -color-text-main; -fx-font-size: 32px; -fx-font-weight: bold; }
+.kpi-title {
+    -fx-text-fill: -color-text-muted;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+.kpi-value {
+    -fx-text-fill: -color-text-main;
+    -fx-font-size: 32px;
+    -fx-font-weight: bold;
+}
 
 /* ----------- BARRAS DE PROGRESO (KPI y Ranking) ----------- */
 /* Altura unificada para que sean visibles */
-.progress-work-thin, 
-.progress-distraction-thin, 
+.progress-work-thin,
+.progress-distraction-thin,
 .progress-bar-danger {
-    -fx-pref-height: 10px; 
+    -fx-pref-height: 10px;
     -fx-min-height: 10px;
     -fx-max-height: 10px;
 }
 
 /* El fondo de la barra (el carril vacío) */
-.progress-work-thin .track, 
+.progress-work-thin .track,
 .progress-distraction-thin .track,
-.progress-bar-danger .track { 
-    -fx-background-color: #0d1117; 
+.progress-bar-danger .track {
+    -fx-background-color: #0d1117;
     -fx-background-radius: 10;
 }
 
 /* Colores de relleno (La parte que progresa) */
-.work-progress .bar, .progress-work-thin .bar { 
-    -fx-background-color: -color-cian; 
+.work-progress .bar, .progress-work-thin .bar {
+    -fx-background-color: -color-cian;
     -fx-background-radius: 10;
 }
 
-.distraction-progress .bar, .progress-distraction-thin .bar { 
-    -fx-background-color: -color-naranja; 
+.distraction-progress .bar, .progress-distraction-thin .bar {
+    -fx-background-color: -color-naranja;
     -fx-background-radius: 10;
 }
 
@@ -81,84 +115,80 @@
 
 
 /* ----------- RANKINGS E ICONOS ----------- */
-.ranking-row { -fx-padding: 10 0 15 0; -fx-border-color: -color-border; -fx-border-width: 0 0 1 0; }
-.app-name { -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 14px; }
-.ranking-pos, .app-time { -fx-text-fill: -color-text-muted; }
-
-.icon-container-work { -fx-background-color: rgba(0, 210, 255, 0.1); }
-.icon-container-distraction { -fx-background-color: rgba(255, 92, 0, 0.1); }
-
-.icon-container-work, .icon-container-distraction {
-    -fx-min-width: 28; -fx-min-height: 28; -fx-background-radius: 6; -fx-alignment: center;
+.ranking-row {
+    -fx-padding: 10 0 15 0;
+    -fx-border-color: -color-border;
+    -fx-border-width: 0 0 1 0;
 }
-
-/* ----------- GRÁFICOS Y SCORE (TELÉFONO) ----------- */
-.cyber-chart { -fx-background-color: transparent; }
-.cyber-chart .axis { -fx-tick-label-fill: -color-text-muted; -fx-axis-label-fill: -color-text-muted; }
-.cyber-chart .chart-vertical-grid-lines, .cyber-chart .chart-horizontal-grid-lines { -fx-stroke: -color-border; }
-.cyber-chart .chart-plot-background { -fx-background-color: transparent; }
-.default-color0.chart-bar { -fx-bar-fill: -color-cian; }
-.default-color1.chart-bar { -fx-bar-fill: -color-naranja; }
-
-.phone-frame {
-    -fx-border-color: -color-border; -fx-border-width: 4; -fx-border-radius: 25;
-    -fx-background-color: #0d1117; -fx-background-radius: 25; -fx-padding: 8;
-}
-.phone-screen { -fx-background-color: -color-bg-card; -fx-background-radius: 20; }
-.score-fill-color {
-    -fx-background-color: linear-gradient(to top, -color-cian, -color-verde-status);
-    -fx-background-radius: 0 0 20 20;
-}
-.score-text-large { -fx-text-fill: -color-text-main; -fx-font-size: 30px; -fx-font-weight: bold; }
-.status-text-excellent { -fx-text-fill: -color-verde-status; -fx-font-size: 12px; -fx-font-weight: bold; }
-
-/* ----------- Cajas de iconos cuadradas ----------- */
-.icon-box {
-    -fx-min-width: 35;
-    -fx-min-height: 35;
-    -fx-max-width: 35;
-    -fx-max-height: 35;
-    -fx-background-radius: 8;
-    -fx-border-radius: 8;
-    -fx-border-width: 1;
-}
-
-.icon-box-cian {
-    -fx-background-color: rgba(0, 210, 255, 0.05);
-    -fx-border-color: rgba(0, 210, 255, 0.4);
-}
-
-.icon-box-naranja {
-    -fx-background-color: rgba(255, 92, 0, 0.05);
-    -fx-border-color: rgba(255, 92, 0, 0.4);
-}
-
-/* ----------- Textos de los Logs ----------- */
-.log-app-title {
+.app-name {
     -fx-text-fill: white;
     -fx-font-weight: bold;
     -fx-font-size: 14px;
 }
-
-.log-subtext {
+.ranking-pos, .app-time {
     -fx-text-fill: -color-text-muted;
-    -fx-font-size: 11px;
 }
 
-.log-duration {
-    -fx-text-fill: -color-text-muted;
-    -fx-font-weight: bold;
+.icon-container-work {
+    -fx-background-color: rgba(0, 210, 255, 0.1);
 }
-
-/* ----------- Etiqueta BLOCKED ----------- */
-.badge-blocked {
-    -fx-text-fill: #ff5c00;
-    -fx-font-size: 10px;
-    -fx-font-weight: bold;
-    -fx-border-color: #ff5c00;
-    -fx-border-radius: 4;
-    -fx-padding: 3 8 3 8;
+.icon-container-distraction {
     -fx-background-color: rgba(255, 92, 0, 0.1);
+}
+
+.icon-container-work, .icon-container-distraction {
+    -fx-min-width: 28;
+    -fx-min-height: 28;
+    -fx-background-radius: 6;
+    -fx-alignment: center;
+}
+
+/* ----------- GRÁFICOS Y SCORE (TELÉFONO) ----------- */
+.cyber-chart {
+    -fx-background-color: transparent;
+}
+.cyber-chart .axis {
+    -fx-tick-label-fill: -color-text-muted;
+    -fx-axis-label-fill: -color-text-muted;
+}
+.cyber-chart .chart-vertical-grid-lines, .cyber-chart .chart-horizontal-grid-lines {
+    -fx-stroke: -color-border;
+}
+.cyber-chart .chart-plot-background {
+    -fx-background-color: transparent;
+}
+.default-color0.chart-bar {
+    -fx-bar-fill: -color-cian;
+}
+.default-color1.chart-bar {
+    -fx-bar-fill: -color-naranja;
+}
+
+.phone-frame {
+    -fx-border-color: -color-border;
+    -fx-border-width: 4;
+    -fx-border-radius: 25;
+    -fx-background-color: #0d1117;
+    -fx-background-radius: 25;
+    -fx-padding: 8;
+}
+.phone-screen {
+    -fx-background-color: -color-bg-card;
+    -fx-background-radius: 20;
+}
+.score-fill-color {
+    -fx-background-color: linear-gradient(to top, -color-cian, -color-verde-status);
+    -fx-background-radius: 0 0 20 20;
+}
+.score-text-large {
+    -fx-text-fill: -color-text-main;
+    -fx-font-size: 30px;
+    -fx-font-weight: bold;
+}
+.status-text-excellent {
+    -fx-text-fill: -color-verde-status;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
 }
 
 /* ----------- Barra de trabajo (Cian) ----------- */

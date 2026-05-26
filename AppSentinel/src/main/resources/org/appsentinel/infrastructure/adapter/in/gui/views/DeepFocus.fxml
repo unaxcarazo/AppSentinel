@@ -1,14 +1,99 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import java.lang.*?>
-<?import java.net.*?>
-<?import java.util.*?>
-<?import javafx.scene.*?>
+<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.shape.Rectangle?>
 
-<AnchorPane id="AnchorPane" prefHeight="400.0" prefWidth="600.0" styleClass="mainFxmlClass" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.appsentinel.infrastructure.gui.controller.DeepFocusController">
-    <stylesheets>
-        <URL value="@/styles/deepfocus.css"/>
-    </stylesheets>
-</AnchorPane>
+<StackPane fx:id="deepFocusRoot" styleClass="deep-focus-base" 
+           stylesheets="@deepfocus.css" xmlns="http://javafx.com/javafx/8" 
+           xmlns:fx="http://javafx.com/fxml/1" 
+           fx:controller="org.appsentinel.infrastructure.gui.controller.DeepFocusController">
+    <children>
+        <!-- Background Gradient (Managed via Controller for animation) -->
+        <Rectangle fx:id="gradientBg" width="1000" height="700" fill="TRANSPARENT" />
+
+        <VBox alignment="TOP_CENTER" spacing="40.0">
+            <padding>
+                <Insets bottom="50.0" left="50.0" right="50.0" top="50.0" />
+            </padding>
+            <children>
+                <!-- Mode Toggle -->
+                <HBox alignment="CENTER" maxWidth="300.0" styleClass="df-mode-toggle">
+                    <children>
+                        <Button fx:id="btnModeChrono" onAction="#showChrono" styleClass="df-mode-btn, df-mode-btn-orange" text="CHRONOMETER" />
+                        <Button fx:id="btnModeSchedule" onAction="#showSchedule" styleClass="df-mode-btn" text="SCHEDULE" />
+                    </children>
+                </HBox>
+
+                <!-- Content Panels -->
+                <StackPane VBox.vgrow="ALWAYS">
+                    <children>
+                        <!-- Chronometer Panel -->
+                        <VBox fx:id="panelChrono" alignment="CENTER" spacing="20.0">
+                            <children>
+                                <Label styleClass="df-title" text="EXTREME FOCUS ACTIVE" />
+                                <Label fx:id="lblTimer" styleClass="df-timer" text="00:00:00" />
+                                <HBox fx:id="boxAddTime" alignment="CENTER" spacing="15.0">
+                                    <children>
+                                        <Button onAction="#add5Min" styleClass="df-time-add-btn" text="+5 MIN" />
+                                        <Button onAction="#add15Min" styleClass="df-time-add-btn" text="+15 MIN" />
+                                        <Button onAction="#add30Min" styleClass="df-time-add-btn" text="+30 MIN" />
+                                        <Button onAction="#resetTimer" styleClass="df-time-add-btn" text="RESET" />
+                                    </children>
+                                </HBox>
+                                <HBox alignment="CENTER" spacing="20.0">
+                                    <children>
+                                        <Button fx:id="btnStart" onAction="#startFocus" styleClass="df-play-btn" text="▶" />
+                                        <Button fx:id="btnStop" onAction="#stopFocus" styleClass="df-stop-btn" text="⏹" />
+                                    </children>
+                                </HBox>
+                            </children>
+                        </VBox>
+
+                        <!-- Schedule Panel -->
+                        <VBox fx:id="panelSchedule" alignment="CENTER" managed="false" spacing="30.0" visible="false">
+                            <children>
+                                <VBox alignment="CENTER" maxWidth="500.0" spacing="25.0" style="-fx-background-color: #121212; -fx-background-radius: 12; -fx-border-color: #2A2A2A; -fx-border-radius: 12; -fx-padding: 40;">
+                                    <children>
+                                        <Label styleClass="df-title-cyan" text="BLOCK UNTIL TARGET TIME" />
+                                        <HBox alignment="CENTER" spacing="20.0">
+                                            <children>
+                                                <VBox spacing="5.0">
+                                                    <children>
+                                                        <Label style="-fx-text-fill: #666; -fx-font-size: 11px;" text="TARGET DATE" />
+                                                        <DatePicker fx:id="datePicker" style="-fx-control-inner-background: #2A2A2A; -fx-text-fill: white;" />
+                                                    </children>
+                                                </VBox>
+                                                <VBox spacing="5.0">
+                                                    <children>
+                                                        <Label style="-fx-text-fill: #666; -fx-font-size: 11px;" text="TARGET TIME" />
+                                                        <HBox alignment="CENTER_LEFT" spacing="5.0">
+                                                            <children>
+                                                                <ComboBox fx:id="comboHH" styleClass="df-combo-box" />
+                                                                <Label style="-fx-text-fill: white; -fx-font-weight: bold;" text=":" />
+                                                                <ComboBox fx:id="comboMM" styleClass="df-combo-box" />
+                                                            </children>
+                                                        </HBox>
+                                                    </children>
+                                                </VBox>
+                                            </children>
+                                        </HBox>
+                                        <Button maxWidth="Infinity" onAction="#initiateLockdown" style="-fx-background-color: transparent; -fx-text-fill: #00E5FF; -fx-border-color: #00E5FF; -fx-border-width: 2; -fx-border-radius: 8; -fx-padding: 12 0; -fx-font-size: 14px; -fx-font-weight: bold; -fx-font-family: 'Consolas', monospace; -fx-cursor: hand;" text="INITIATE LOCKDOWN" />
+                                    </children>
+                                </VBox>
+                            </children>
+                        </VBox>
+                    </children>
+                </StackPane>
+            </children>
+        </VBox>
+
+        <!-- Emergency Exit -->
+        <Button onAction="#handleEmergencyExit" styleClass="df-emergency-btn" text="! EMERGENCY EXIT" StackPane.alignment="BOTTOM_RIGHT">
+            <StackPane.margin>
+                <Insets bottom="30.0" right="30.0" />
+            </StackPane.margin>
+        </Button>
+    </children>
+</StackPane>

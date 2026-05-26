@@ -24,7 +24,6 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
-import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
@@ -55,10 +54,6 @@ public class DashboardController implements Initializable, Controllable {
     private VBox vboxTopWork;
     @FXML
     private VBox vboxTopDistractions;
-    @FXML
-    private VBox vboxActivityLog;
-    @FXML
-    private VBox vboxBlockingLog;
 
     @FXML
     private ProgressBar progressWorkCard;
@@ -102,7 +97,7 @@ public class DashboardController implements Initializable, Controllable {
         }
 
         Platform.runLater(() -> {
-            // Estructura simétrica de los paneles intermedios e inferiores
+            // Estructura simétrica de los paneles intermedios
             if (vboxTopWork != null && vboxTopDistractions != null) {
                 if (vboxTopWork.getParent() instanceof Region && vboxTopDistractions.getParent() instanceof Region) {
                     Region tarjetaTrabajo = (Region) vboxTopWork.getParent();
@@ -111,18 +106,6 @@ public class DashboardController implements Initializable, Controllable {
                         HBox filaMedia = (HBox) tarjetaTrabajo.getParent();
                         tarjetaTrabajo.prefWidthProperty().bind(filaMedia.widthProperty().divide(2.0).subtract(15));
                         tarjetaDistracciones.prefWidthProperty().bind(filaMedia.widthProperty().divide(2.0).subtract(15));
-                    }
-                }
-            }
-
-            if (vboxActivityLog != null && vboxBlockingLog != null) {
-                if (vboxActivityLog.getParent() instanceof Region && vboxBlockingLog.getParent() instanceof Region) {
-                    Region tarjetaActivity = (Region) vboxActivityLog.getParent();
-                    Region tarjetaBlocking = (Region) vboxBlockingLog.getParent();
-                    if (tarjetaActivity.getParent() instanceof HBox) {
-                        HBox filaInferior = (HBox) tarjetaActivity.getParent();
-                        tarjetaActivity.prefWidthProperty().bind(filaInferior.widthProperty().divide(2.0).subtract(15));
-                        tarjetaBlocking.prefWidthProperty().bind(filaInferior.widthProperty().divide(2.0).subtract(15));
                     }
                 }
             }
@@ -299,111 +282,6 @@ public class DashboardController implements Initializable, Controllable {
         }
     }
 
-    private void actualizarLogActividad(List<Registro> registros) {
-        vboxActivityLog.getChildren().clear();
-        if (registros == null || registros.isEmpty()) {
-            return;
-        }
-
-        for (Registro r : registros) {
-            if (r == null || r.getFechaRegistro() == null || r.getNombreActividad() == null) {
-                continue;
-            }
-
-            HBox row = new HBox();
-            row.getStyleClass().add("log-row");
-            row.setAlignment(Pos.CENTER_LEFT);
-            row.setSpacing(15);
-
-            String categoria = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
-            boolean esTrabajo = "TRABAJO".equals(categoria) || r.getNombreActividad().toLowerCase().contains("netbeans");
-
-            String emoji = esTrabajo ? "💻" : "🌐";
-            String estiloIcono = esTrabajo ? "icon-box-cian" : "icon-box-naranja";
-
-            StackPane iconBox = new StackPane(new Label(emoji));
-            iconBox.getStyleClass().addAll("icon-box", estiloIcono);
-
-            VBox textData = new VBox();
-            HBox.setHgrow(textData, Priority.ALWAYS);
-
-            Label appName = new Label(sanitizarTextoLargo(r.getNombreActividad(), 40));
-            appName.getStyleClass().add("log-app-title");
-
-            String horaFormateada = "00:00";
-            if (r.getFechaRegistro().toLocalTime() != null) {
-                String rawTime = r.getFechaRegistro().toLocalTime().toString();
-                if (rawTime.length() >= 5) {
-                    horaFormateada = rawTime.substring(0, 5);
-                }
-            }
-
-            Label detail = new Label("Started: " + horaFormateada);
-            detail.getStyleClass().add("log-subtext");
-            textData.getChildren().addAll(appName, detail);
-
-            Region spacer = new Region();
-            HBox.setHgrow(spacer, Priority.ALWAYS);
-
-            Label duration = new Label(formatearTiempo(r.getDuracionSeg()));
-            duration.getStyleClass().add("log-duration");
-
-            row.getChildren().addAll(iconBox, textData, spacer, duration);
-            vboxActivityLog.getChildren().add(row);
-        }
-    }
-
-    private void actualizarLogBloqueos(List<Registro> bloqueos) {
-        vboxBlockingLog.getChildren().clear();
-        if (bloqueos == null || bloqueos.isEmpty()) {
-            Label lblNoData = new Label("No blocked events today");
-            lblNoData.getStyleClass().add("log-subtext");
-            vboxBlockingLog.getChildren().add(lblNoData);
-            return;
-        }
-
-        for (Registro b : bloqueos) {
-            if (b == null || b.getFechaRegistro() == null || b.getNombreActividad() == null) {
-                continue;
-            }
-
-            HBox row = new HBox();
-            row.getStyleClass().add("log-row");
-            row.setAlignment(Pos.CENTER_LEFT);
-            row.setSpacing(15);
-
-            StackPane iconBox = new StackPane(new Label("🛡"));
-            iconBox.getStyleClass().addAll("icon-box", "icon-box-naranja");
-
-            VBox textData = new VBox();
-            HBox.setHgrow(textData, Priority.ALWAYS);
-
-            Label appName = new Label(sanitizarTextoLargo(b.getNombreActividad(), 40));
-            appName.getStyleClass().add("log-app-title");
-
-            String horaBloqueo = "00:00";
-            if (b.getFechaRegistro().toLocalTime() != null) {
-                String rawTime = b.getFechaRegistro().toLocalTime().toString();
-                if (rawTime.length() >= 5) {
-                    horaBloqueo = rawTime.substring(0, 5);
-                }
-            }
-
-            Label detail = new Label("Blocked attempt at " + horaBloqueo);
-            detail.getStyleClass().add("log-subtext");
-            textData.getChildren().addAll(appName, detail);
-
-            Region spacer = new Region();
-            HBox.setHgrow(spacer, Priority.ALWAYS);
-
-            Label badge = new Label("BLOCKED");
-            badge.getStyleClass().add("badge-blocked");
-
-            row.getChildren().addAll(iconBox, textData, spacer, badge);
-            vboxBlockingLog.getChildren().add(row);
-        }
-    }
-
     private void actualizarCards(List<Registro> registros) {
         if (registros == null || registros.isEmpty()) {
             lblWorkTime.setText("00h 00m");
@@ -431,9 +309,9 @@ public class DashboardController implements Initializable, Controllable {
                 continue;
             }
             String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
-            String nombre = r.getNombreActividad() != null ? r.getNombreActividad().toLowerCase() : "";
+            String AppName = r.getNombreActividad() != null ? r.getNombreActividad().toLowerCase() : "";
 
-            if ("TRABAJO".equals(cat) || nombre.contains("netbeans")) {
+            if ("TRABAJO".equals(cat) || AppName.contains("netbeans")) {
                 totalSegundosTrabajo += r.getDuracionSeg();
             } else if ("DISTRACCION".equals(cat)) {
                 totalSegundosDistraccion += r.getDuracionSeg();
@@ -649,7 +527,6 @@ public class DashboardController implements Initializable, Controllable {
             List<Registro> topTrabajo = repository.obtenerTopTrabajo(usuarioActual, 5);
             List<Registro> topDistracciones = repository.obtenerTopDistracciones(usuarioActual, 5);
             List<Registro> actividad = repository.obtenerActividadHoy(usuarioActual);
-            List<Registro> bloqueos = repository.obtenerBloqueosHoy(usuarioActual);
 
             if ((topTrabajo == null || topTrabajo.isEmpty()) && actividad != null && !actividad.isEmpty()) {
                 topTrabajo = actividad.stream()
@@ -672,8 +549,6 @@ public class DashboardController implements Initializable, Controllable {
             actualizarCards(actividad);
             actualizarRankingTrabajo(topTrabajo);
             actualizarRankingDistracciones(topDistracciones);
-            actualizarLogActividad(actividad);
-            actualizarLogBloqueos(bloqueos);
             actualizarGraficoReal(actividad);
 
             updateProductivityScore(actividad);
@@ -690,5 +565,4 @@ public class DashboardController implements Initializable, Controllable {
     public void shutdown() {
         detenerPlanificador();
     }
-
 }

@@ -5,24 +5,28 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.layout.StackPane; // 🔄 Mantenemos el StackPane líquido que descubrimos antes
-
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javafx.scene.control.Button;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
 
 /**
- * MainController: Controlador raíz de la interfaz gráfica.
- * Orquesta el intercambio dinámico de pantallas de forma polimórfica y desacoplada.
+ * MainController: Controlador raíz de la interfaz gráfica. Orquesta el
+ * intercambio dinámico de pantallas de forma polimórfica y desacoplada.
  */
 public class MainController {
 
     private static final Logger LOGGER = Logger.getLogger(MainController.class.getName());
 
     //   Usamos StackPane en lugar de AnchorPane para que las pantallas del grupo sean 100% responsive
-    @FXML private StackPane contenedor;
+    @FXML
+    private StackPane contenedor;
 
     private AppContext ctx;
+
+    @FXML
+    private Button btnDeepFocus;
 
     @FXML
     public void initialize() {
@@ -32,15 +36,15 @@ public class MainController {
     }
 
     /**
-     * Inyección inicial del contexto global de la aplicación.
-     * Carga de forma segura la pantalla por defecto del sistema de manera asíncrona.
+     * Inyección inicial del contexto global de la aplicación. Carga de forma
+     * segura la pantalla por defecto del sistema de manera asíncrona.
      */
     public void init(AppContext ctx) {
         if (ctx == null) {
             throw new IllegalArgumentException("El contexto de la aplicación (AppContext) no puede ser nulo.");
         }
         this.ctx = ctx;
-        
+
         // Carga el Dashboard de forma segura una vez el hilo de JavaFX esté listo
         Platform.runLater(() -> cargarVista("Dashboard"));
     }
@@ -48,11 +52,44 @@ public class MainController {
     // =========================================================================
     // ACCIONES DEL MENÚ LATERAL (@FXML) - Coincidiendo con las mayúsculas de tus archivos
     // =========================================================================
-    @FXML public void onDashboard()   { cargarVista("Dashboard"); }
-    @FXML public void onAppBlocker()  { cargarVista("AppBlocker"); }
-    @FXML public void onPerformance() { cargarVista("Performance"); }
-    @FXML public void onHistory()     { cargarVista("UsageHistory"); }
-    @FXML public void onDeepFocus()   { cargarVista("DeepFocus"); } // Ajustar si es vista o acción directa
+    @FXML
+    public void onDashboard() {
+        cargarVista("Dashboard");
+    }
+
+    @FXML
+    public void onAppBlocker() {
+        cargarVista("AppBlocker");
+    }
+
+    @FXML
+    public void onPerformance() {
+        cargarVista("Performance");
+    }
+
+    @FXML
+    public void onHistory() {
+        cargarVista("UsageHistory");
+    }
+
+    @FXML
+    public void onDeepFocus() {
+        try {
+            // 1. Cargamos el archivo FXML de Deep Focus
+            javafx.fxml.FXMLLoader loader = new javafx.fxml.FXMLLoader(getClass().getResource("/fxml/deep_focus.fxml"));
+            javafx.scene.Parent deepFocusView = loader.load();
+
+            // 2. Limpiamos el panel de la derecha (donde están los logs de actividad)
+            contenedor.getChildren().clear();
+
+            // 3. Inyectamos la nueva vista de Deep Focus en el centro
+            contenedor.getChildren().add(deepFocusView);
+
+        } catch (Exception e) {
+            System.err.println("Error al cargar la pantalla de Deep Focus: " + e.getMessage());
+            e.printStackTrace();
+        }
+    } // Ajustar si es vista o acción directa
 
     // =========================================================================
     // DESPACHADOR DINÁMICO DE PANTALLAS (MÉTODO NÚCLEO POLIMÓRFICO)
@@ -65,7 +102,7 @@ public class MainController {
 
         try {
             FXMLLoader loader = new FXMLLoader(
-                getClass().getResource("/org/appsentinel/infrastructure/adapter/in/gui/views/" + nombre + ".fxml"));
+                    getClass().getResource("/org/appsentinel/infrastructure/adapter/in/gui/views/" + nombre + ".fxml"));
             Parent vista = loader.load();
 
             // 🔀 INYECCIÓN POLIMÓRFICA: Magia SOLID aplicada al grupo
@@ -86,4 +123,5 @@ public class MainController {
             LOGGER.log(Level.SEVERE, e.getMessage(), e);
         }
     }
+
 }

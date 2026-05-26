@@ -1,7 +1,246 @@
-/*
- * Empty Stylesheet file.
- */
+/* ===== ROOT & GLOBAL ===== */
+.root {
+    -fx-background-color: #121212;
+    -fx-font-family: "Segoe UI", "Arial", sans-serif;
+    -fx-text-fill: #FFFFFF;
+    -fx-font-size: 13px;
+}
 
-.mainFxmlClass {
+/* ===== SCROLL PANE ===== */
+.scroll-pane {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+}
+.scroll-pane > .viewport {
+    -fx-background-color: transparent;
+}
+.scroll-bar {
+    -fx-background-color: #1a1a1a;
+}
+.scroll-bar .thumb {
+    -fx-background-color: #3a3a3a;
+    -fx-background-radius: 4;
+}
+.scroll-bar .increment-button, .scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+.scroll-bar .increment-arrow, .scroll-bar .decrement-arrow {
+    -fx-shape: "";
+    -fx-padding: 0;
+}
 
+/* ===== CONTENT AREA ===== */
+.content-area {
+    -fx-background-color: #121212;
+    -fx-padding: 30;
+}
+
+.page-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #FFFFFF;
+    -fx-font-family: "Consolas", "Courier New", monospace;
+    -fx-letter-spacing: 1;
+}
+
+.page-subtitle {
+    -fx-font-size: 13px;
+    -fx-text-fill: #666666;
+}
+
+/* ===== BUTTONS GENERAL ===== */
+.btn-outline {
+    -fx-background-color: #1E1E1E;
+    -fx-text-fill: #CCCCCC;
+    -fx-padding: 8 16;
+    -fx-background-radius: 6;
+    -fx-border-color: #333333;
+    -fx-border-width: 1;
+    -fx-border-radius: 6;
+    -fx-cursor: hand;
+    -fx-font-size: 12px;
+}
+
+.btn-outline:hover {
+    -fx-background-color: #2A2A2A;
+    -fx-border-color: #444444;
+}
+
+/* ===== TOOLTIP ===== */
+.tooltip {
+    -fx-background-color: #2A2A2A;
+    -fx-text-fill: #FFFFFF;
+    -fx-background-radius: 6;
+    -fx-border-color: #444444;
+    -fx-border-radius: 6;
+    -fx-padding: 6 10;
+    -fx-font-size: 11px;
+}
+
+/* ===== LIST VIEW ===== */
+.list-view {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+.list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: #FFFFFF;
+    -fx-padding: 8 12;
+}
+.list-cell:filled:selected {
+    -fx-background-color: rgba(0, 229, 255, 0.1);
+}
+.list-cell:filled:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* ===== DEEP FOCUS VIEW ===== */
+.deep-focus-base {
+    -fx-background-color: #050505;
+}
+
+.df-mode-toggle {
+    -fx-background-color: #1A1A1A;
+    -fx-background-radius: 8;
+    -fx-padding: 4;
+}
+
+.df-mode-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #888888;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-padding: 10 20;
+    -fx-background-radius: 6;
+    -fx-cursor: hand;
+    -fx-font-family: "Consolas", "Courier New", monospace;
+}
+
+.df-mode-btn-orange {
+    -fx-background-color: #FF3D00;
+    -fx-text-fill: #FFFFFF;
+    -fx-effect: dropshadow(gaussian, rgba(255, 61, 0, 0.6), 15, 0.2, 0, 0);
+}
+
+.df-mode-btn-cyan {
+    -fx-background-color: #00E5FF;
+    -fx-text-fill: #000000;
+    -fx-effect: dropshadow(gaussian, rgba(0, 229, 255, 0.6), 15, 0.2, 0, 0);
+}
+
+.df-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #FF3D00;
+    -fx-font-family: "Consolas", "Courier New", monospace;
+    -fx-letter-spacing: 5;
+    -fx-effect: dropshadow(gaussian, rgba(255, 61, 0, 0.4), 10, 0.1, 0, 0);
+}
+
+.df-title-cyan {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #00E5FF;
+    -fx-font-family: "Consolas", "Courier New", monospace;
+    -fx-letter-spacing: 5;
+    -fx-effect: dropshadow(gaussian, rgba(0, 229, 255, 0.4), 10, 0.1, 0, 0);
+}
+
+.df-timer {
+    -fx-font-size: 120px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #FFFFFF;
+    -fx-font-family: "Arial Black", "Arial", sans-serif;
+    -fx-effect: dropshadow(gaussian, rgba(255, 255, 255, 0.3), 20, 0.2, 0, 0);
+}
+
+.df-time-add-btn {
+    -fx-background-color: #1A1A1A;
+    -fx-text-fill: #CCCCCC;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-padding: 8 16;
+    -fx-background-radius: 8;
+    -fx-border-color: #333333;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-cursor: hand;
+}
+.df-time-add-btn:hover {
+    -fx-background-color: #2A2A2A;
+    -fx-border-color: #555555;
+    -fx-text-fill: #FFFFFF;
+}
+
+.df-play-btn {
+    -fx-background-color: #121212;
+    -fx-text-fill: #FFFFFF;
+    -fx-border-color: #333333;
+    -fx-border-width: 2;
+    -fx-background-radius: 40;
+    -fx-border-radius: 40;
+    -fx-min-width: 80;
+    -fx-min-height: 80;
+    -fx-font-size: 24px;
+    -fx-cursor: hand;
+}
+.df-play-btn:hover {
+    -fx-background-color: #1A1A1A;
+    -fx-border-color: #555555;
+}
+
+.df-stop-btn {
+    -fx-background-color: #121212;
+    -fx-text-fill: #FFFFFF;
+    -fx-border-color: #333333;
+    -fx-border-width: 2;
+    -fx-background-radius: 30;
+    -fx-border-radius: 30;
+    -fx-min-width: 60;
+    -fx-min-height: 60;
+    -fx-font-size: 18px;
+    -fx-cursor: hand;
+}
+.df-stop-btn:hover {
+    -fx-background-color: #1A1A1A;
+    -fx-border-color: #555555;
+}
+
+.df-emergency-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #FF3D00;
+    -fx-border-color: #FF3D00;
+    -fx-border-width: 1;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-padding: 8 16;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-font-family: "Consolas", "Courier New", monospace;
+    -fx-cursor: hand;
+}
+.df-emergency-btn:hover {
+    -fx-background-color: rgba(255, 61, 0, 0.1);
+    -fx-effect: dropshadow(gaussian, rgba(255, 61, 0, 0.4), 10, 0, 0, 0);
+}
+
+.df-combo-box {
+    -fx-background-color: #2A2A2A;
+    -fx-text-fill: #FFFFFF;
+    -fx-background-radius: 8;
+    -fx-border-color: #333333;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+}
+.df-combo-box .list-cell {
+    -fx-text-fill: #FFFFFF;
+    -fx-background-color: transparent;
+}
+.df-combo-box-popup .list-view {
+    -fx-background-color: #1E1E1E;
+    -fx-border-color: #333333;
+}
+.df-combo-box-popup .list-view .list-cell:hover {
+    -fx-background-color: #333333;
 }

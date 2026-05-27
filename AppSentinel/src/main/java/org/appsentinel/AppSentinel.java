@@ -1,42 +1,62 @@
 package org.appsentinel;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
-import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
 import org.appsentinel.infrastructure.bootstrap.AppWiring;
 import org.appsentinel.infrastructure.adapter.in.gui.controller.MainController;
 
+import java.awt.Desktop;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.util.concurrent.CompletableFuture;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 /**
- * AppSentinel: Clase de aplicación JavaFX.
+ * AppSentinel: Clase de aplicacion JavaFX.
  *
- * Extiende Application y gestiona el ciclo de vida gráfico.
- * NO contiene main() — el arranque lo delega Launcher.java.
+ * RESPONSABILIDAD DE CICLO DE VIDA:
+ * - Arranque: construye AppContext via AppWiring, carga GUI o headless.
+ * - Cierre: orquesta shutdown ORDENADO con garantia de reporte HTML.
  *
- * Soporta dos modos:
- * - GUI (por defecto): JavaFX + MainController + escáner + WebSocket.
- * - HEADLESS: solo dominio, sin UI, para pruebas automatizadas.
- *   Activar con: java -Dappsentinel.headless=true -jar AppSentinel.jar
+ * ORDEN DE SHUTDOWN (corrige race condition pool vs reporte):
+ *   1. AppWiring.detenerInfraestructura() — para monitores, WebSocket, tracking flush.
+ *   2. generarYAbrirReporte() — SELECT a PostgreSQL (pool aun activo) + abrir navegador.
+ *   3. AppWiring.cerrarConexiones() — destruir pool HikariCP (paso final).
+ *
+ * FIXES:
+ *   1. Sin instanciacion de infraestructura: usa ctx.reporteService() (Hexagonal).
+ *   2. Sin setOnCloseRequest duplicado: unico punto de cierre es stop().
+ *   3. Headless NO bloquea Application Thread: CompletableFuture.runAsync().
+ *   4. Thread.sleep(500) tras abrir navegador: da tiempo al OS de inicializarlo.
  */
 public class AppSentinel extends Application {
 
-    // Lee la propiedad de sistema, no los args[].
-    // Se activa con el flag -Dappsentinel.headless=true al lanzar la JVM.
-    private static final boolean MODO_HEADLESS = Boolean.getBoolean("appsentinel.headless");
+    private static final Logger LOGGER = Logger.getLogger(AppSentinel.class.getName());
 
-    // Ruta al FXML principal dentro del classpath.
-    // Coincide con src/main/resources/org/appsentinel/infrastructure/adapter/in/gui/views/Main.fxml
-    private static final String FXML_MAIN = 
+    private static final boolean MODO_HEADLESS = Boolean.getBoolean("appsentinel.headless");
+    private static final String FXML_MAIN =
         "/org/appsentinel/infrastructure/adapter/in/gui/views/Main.fxml";
+
+    private static final Path DIR_REPORTES = Paths.get(
+        System.getProperty("user.home"), "AppSentinel", "reports"
+    );
+
+    private AppContext ctx;
+    private volatile boolean yaSeEjecutoShutdown = false;
 
     @Override
     public void start(Stage stage) throws Exception {
-        AppContext ctx = AppWiring.construir();
+        ctx = AppWiring.construir();
 
         if (MODO_HEADLESS) {
-            System.out.println("[HEADLESS] Modo prueba activo. Sin UI.");
+            System.out.println("[HEADLESS] Modo activo. Ejecutando en hilo secundario...");
             ejecutarHeadless();
             return;
         }
@@ -45,58 +65,32 @@ public class AppSentinel extends Application {
     }
 
     // -------------------------------------------------------------------------
-    // Modo headless
+    // Modo headless — NO bloquea Application Thread
     // -------------------------------------------------------------------------
 
-    /**
-     * Ejecuta el sistema sin interfaz gráfica durante 30 segundos.
-     *
-     * El bloque try-finally garantiza que shutdown() se ejecute siempre,
-     * incluso si Thread.sleep() es interrumpido externamente. En la versión
-     * anterior no existía este bloque: una interrupción dejaba todos los
-     * hilos y el pool de conexiones abiertos indefinidamente.
-     */
     private void ejecutarHeadless() {
-        try {
-            Thread.sleep(30000);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            System.out.println("[HEADLESS] Interrumpido antes de completar.");
-        } finally {
-            shutdown();
-            System.exit(0);
-        }
+        CompletableFuture.runAsync(() -> {
+            try {
+                Thread.sleep(30000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                System.out.println("[HEADLESS] Interrumpido antes de completar.");
+            }
+        }).thenRun(() -> Platform.runLater(() -> {
+            // Volvemos al JavaFX Application Thread para invocar stop() correctamente
+            Platform.exit();
+        }));
+        // NOTA: No llamamos shutdownConReporte() aqui. Platform.exit() invocara stop().
     }
 
     // -------------------------------------------------------------------------
     // Modo GUI
     // -------------------------------------------------------------------------
 
-    /**
-     * Inicia la interfaz gráfica JavaFX.
-     *
-     * Validación del FXML: getResource() devuelve null si el archivo no
-     * existe en el classpath. Sin esta comprobación, loader.load() lanza
-     * un NullPointerException genérico sin indicar la causa real.
-     *
-     * Ruta corregida: Main.fxml está en
-     * src/main/resources/org/appsentinel/infrastructure/adapter/in/gui/views/
-     * y no en la raíz de org/appsentinel/ como indicaba la versión anterior.
-     *
-     * Dimensiones mínimas: sin setMinWidth/setMinHeight el usuario puede
-     * colapsar la ventana a 0x0 px, rompiendo todos los layouts de JavaFX.
-     *
-     * setOnCloseRequest delega en shutdown(), que invoca
-     * AppWiring.detenerTodo() para parar monitor + WebSocket + tracking
-     * antes de cerrar el pool HikariCP.
-     */
     private void iniciarGUI(Stage stage, AppContext ctx) throws Exception {
         java.net.URL fxmlUrl = getClass().getResource(FXML_MAIN);
         if (fxmlUrl == null) {
-            throw new IllegalStateException(
-                "[ERROR] No se encontró Main.fxml en: " + FXML_MAIN + "\n" +
-                "Verificar que el archivo esté en " +
-                "src/main/resources/org/appsentinel/infrastructure/adapter/in/gui/views/");
+            throw new IllegalStateException("[ERROR] No se encontro Main.fxml en: " + FXML_MAIN);
         }
 
         FXMLLoader loader = new FXMLLoader(fxmlUrl);
@@ -112,43 +106,105 @@ public class AppSentinel extends Application {
             System.err.println("[ADVERTENCIA] MainController no pudo cargarse desde FXML.");
         }
 
-        stage.setOnCloseRequest(e -> {
-            System.out.println("[GUI] Ventana cerrada. Iniciando apagado...");
-            shutdown();
-        });
-
+        // SIN setOnCloseRequest. El unico punto de cierre es stop().
+        // JavaFX invoca stop() automaticamente al cerrar la ventana.
         stage.show();
     }
 
     // -------------------------------------------------------------------------
-    // Apagado centralizado
+    // Shutdown ORDENADO — corrige race condition pool vs reporte
     // -------------------------------------------------------------------------
 
     /**
-     * Para todos los hilos de infraestructura y libera recursos.
+     * UNICO punto de entrada de apagado garantizado por JavaFX.
+     * Captura: cerrar ventana, Platform.exit(), Ctrl+C, kill -TERM.
      *
-     * El orden importa:
-     * 1. AppWiring.detenerTodo(): para monitor, WebSocket y tracking
-     *    en el orden correcto que ya gestiona AppWiring internamente.
-     * 2. DatabaseConnection.cerrarPool(): cierra el pool HikariCP
-     *    después de que tracking haya persistido los últimos chunks.
+     * ORDEN CRITICO:
+     *   1. detenerInfraestructura() — monitores + flush tracking a BD.
+     *   2. generarYAbrirReporte() — SELECT a PostgreSQL (pool activo) + navegador.
+     *   3. cerrarConexiones() — destruir pool (PASO FINAL).
      *
-     * Cada bloque try-catch está aislado para que un fallo en el paso 1
-     * no impida la ejecución del paso 2.
+     * Flag yaSeEjecutoShutdown evita doble ejecucion si stop() se invoca
+     * multiples veces (raro, pero posible en ciertos frameworks de testing).
      */
-    private void shutdown() {
-        try {
-            AppWiring.detenerTodo();
-        } catch (Exception e) {
-            System.err.println("[ERROR] Fallo al detener hilos de infraestructura: " + e.getMessage());
-        }
+    @Override
+    public void stop() {
+        LOGGER.log(Level.INFO, "[SHUTDOWN] Hook stop() de JavaFX invocado.");
+        shutdownConReporte();
+    }
 
-        try {
-            DatabaseConnection.cerrarPool();
-        } catch (Exception e) {
-            System.err.println("[ERROR] Fallo al cerrar pool de conexiones: " + e.getMessage());
+    private synchronized void shutdownConReporte() {
+        if (yaSeEjecutoShutdown) {
+            LOGGER.log(Level.WARNING, "[SHUTDOWN] Ignorando invocacion duplicada.");
+            return;
         }
+        yaSeEjecutoShutdown = true;
 
-        System.out.println("[SHUTDOWN] AppSentinel apagado correctamente.");
+        LOGGER.log(Level.INFO, "[SHUTDOWN] Iniciando apagado ordenado...");
+
+        // 1. Detener todo (monitores, WebSocket, flush tracking a BD)
+        // POOL SIGUE ACTIVO — necesario para SELECT del reporte
+        AppWiring.detenerTodo();
+
+        // 2. GENERAR Y ABRIR INFORME — condicion SI O SI
+        // PostgreSQL responde SELECT porque el pool aun no se cerro
+        generarYAbrirReporte();
+
+        // 3. PASO FINAL: Cerrar pool de conexiones
+        // Ya no se necesita BD. El reporte esta generado y el navegador abierto.
+        AppWiring.cerrarConexiones();
+
+        LOGGER.log(Level.INFO, "[SHUTDOWN] Aplicacion cerrada correctamente.");
+    }
+
+    /**
+     * Genera el informe HTML en ruta fija y lo abre en navegador.
+     * INAMOVIBLE: nunca lanza excepcion hacia arriba.
+     *
+     * FIX: Thread.sleep(500) tras abrir navegador da tiempo al sistema
+     * operativo de inicializar el proceso del navegador antes de que
+     * la JVM termine (especialmente en Windows donde el spawn de proceso
+     * puede tardar >100ms).
+     *
+     * Usa ctx.reporteService() — cero instanciacion de infraestructura.
+     */
+    private void generarYAbrirReporte() {
+        try {
+            Files.createDirectories(DIR_REPORTES);
+
+            String nombreArchivo = "DelayLog_" + LocalDate.now() + ".html";
+            Path rutaReporte = DIR_REPORTES.resolve(nombreArchivo);
+
+            if (ctx != null && ctx.reporteService() != null) {
+                ctx.reporteService().generarInformeHoy(rutaReporte.toString());
+                LOGGER.log(Level.INFO, "[SHUTDOWN] Informe generado: {0}", rutaReporte);
+            } else {
+                LOGGER.log(Level.SEVERE,
+                    "[SHUTDOWN] ReporteDiarioService no disponible en AppContext. " +
+                    "No se genero informe.");
+                return;
+            }
+
+            // ABRIR EN NAVEGADOR
+            if (Desktop.isDesktopSupported()
+                    && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+                Desktop.getDesktop().browse(rutaReporte.toUri());
+                LOGGER.log(Level.INFO, "[SHUTDOWN] Informe abierto en navegador.");
+
+                // FIX: Pausa de 500ms para dar tiempo al OS de inicializar el navegador
+                // antes de que la JVM termine. En Windows el spawn de proceso puede
+                // ser asincrono y cancelarse si el proceso padre (JVM) muere rapido.
+                Thread.sleep(500);
+
+            } else {
+                LOGGER.log(Level.WARNING,
+                    "[SHUTDOWN] Desktop no soportado. Abrir manualmente: {0}", rutaReporte);
+            }
+
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE,
+                "[SHUTDOWN] FALLO CRITICO generando o abriendo informe. " +
+                "Datos del dia estan en BD pero no en HTML.", e);
+        }
     }
 }

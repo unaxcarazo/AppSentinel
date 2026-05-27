@@ -16,20 +16,24 @@ import org.appsentinel.infrastructure.adapter.out.persistence.PostgresDatabaseCl
 import org.appsentinel.infrastructure.config.AppConfig;
 import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
 
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 /**
  * AppWiring: Ensamblador del sistema (Dependency Injection manual).
  *
- * Instancia todos los adaptadores, los conecta con el dominio a través
- * de los puertos correspondientes y devuelve un AppContext inmutable.
+ * RESPONSABILIDAD UNICA: Construir el grafo de dependencias y devolver AppContext.
+ * NO contiene logica de ciclo de vida de aplicacion (abrir navegadores,
+ * manejar eventos de cierre, etc.). Esa responsabilidad pertenece a AppSentinel.
  *
- * FIX: ReporteDiarioService genera DelayLog.html al cerrar la aplicación
- * con datos reales del usuario (cualquier usuario, no hardcodeado).
- *
- * FIX: detenerTodo() genera el informe ANTES de cerrar el pool de conexiones.
- * El orden de shutdown garantiza que los datos del día se persistan en HTML
- * antes de que MantenimientoDiarioService limpie la BD a medianoche.
+ * FIX: detenerInfraestructura() ya NO cierra el pool de conexiones.
+ * El cierre del pool se delega a cerrarConexiones() para permitir que
+ * AppSentinel genere el reporte HTML (que necesita SELECT a PostgreSQL)
+ * ANTES de destruir las conexiones.
  */
 public class AppWiring {
+
+    private static final Logger LOGGER = Logger.getLogger(AppWiring.class.getName());
 
     private static WebSocketAdapter             webSocketInstance;
     private static ProcessWindowMonitorAdapter  monitorInstance;
@@ -47,14 +51,13 @@ public class AppWiring {
 
         // ========== MANTENIMIENTO DIARIO ==========
         PostgresDatabaseCleaner cleaner = new PostgresDatabaseCleaner();
-        MantenimientoDiarioService mantenimiento = new MantenimientoDiarioService(cleaner);
-        mantenimiento.iniciar();
-        mantenimientoInstance = mantenimiento;
+        mantenimientoInstance = new MantenimientoDiarioService(cleaner);
+        mantenimientoInstance.iniciar();
 
         // ========== DOMINIO ==========
         DistractionDetector detector = new DistractionDetector(categorias);
 
-        TimeTrackingService tracking = new TimeTrackingService(
+        trackingInstance = new TimeTrackingService(
             detector,
             repo,
             notificacion,
@@ -63,75 +66,95 @@ public class AppWiring {
             AppConfig.getSegundosBloqueoSesion(),
             AppConfig.getSegundosPausaReenfoque(),
             AppConfig.isModoEstricto(),
-            AppConfig.getUsuarioSistema()  // ← Cualquier usuario del sistema
+            AppConfig.getUsuarioSistema()
         );
-        trackingInstance = tracking;
 
         // ========== ADAPTADORES DE ENTRADA + SALIDA CRUZADOS ==========
-        WebSocketAdapter webSocket = new WebSocketAdapter(tracking);
-        webSocket.iniciar();
-        webSocketInstance = webSocket;
+        webSocketInstance = new WebSocketAdapter(trackingInstance);
+        webSocketInstance.iniciar();
 
-        ProcessKillerAdapter killer = new ProcessKillerAdapter(webSocket);
-        tracking.setKiller(killer);
+        ProcessKillerAdapter killer = new ProcessKillerAdapter(webSocketInstance);
+        trackingInstance.setKiller(killer);
 
         // ========== REPORTE DIARIO ==========
         HtmlReportAdapter htmlAdapter = new HtmlReportAdapter(AppConfig.isModoEstricto());
-        ReporteDiarioService reporte = new ReporteDiarioService(
+        reporteInstance = new ReporteDiarioService(
             repo,
             htmlAdapter,
-            AppConfig.getUsuarioSistema()  // ← Dinámico: funciona con cualquier usuario
+            AppConfig.getUsuarioSistema()
         );
-        reporteInstance = reporte;
 
         // ========== SENSOR DE ENTRADA ==========
-        ProcessWindowMonitorAdapter monitor = new ProcessWindowMonitorAdapter(tracking);
-        monitor.iniciar();
-        monitorInstance = monitor;
+        monitorInstance = new ProcessWindowMonitorAdapter(trackingInstance);
+        monitorInstance.iniciar();
 
+        // ========== EXPONER EN CONTEXTO ==========
         return new AppContext(
-            tracking, repo, categorias, notificacion, killer,
-            rendimiento, tracking, mantenimiento
+            trackingInstance,
+            repo,
+            categorias,
+            notificacion,
+            killer,
+            rendimiento,
+            trackingInstance,
+            mantenimientoInstance,
+            reporteInstance
         );
     }
 
     /**
-     * Orden de apagado crítico para garantizar integridad de datos:
-     * 1. Parar monitor y WebSocket (dejar de recibir eventos).
-     * 2. Flush final de tracking a PostgreSQL (UPSERT acumulado).
-     * 3. Generar informe HTML con datos reales del día.
-     * 4. Parar mantenimiento diario (evita que limpie durante el reporte).
-     * 5. Cerrar pool HikariCP.
+     * Detiene la infraestructura de fondo: monitores, WebSocket, tracking,
+     * mantenimiento diario.
+     *
+     * FIX: Ya NO cierra el pool de conexiones. El pool permanece activo
+     * para que AppSentinel pueda generar el reporte HTML (SELECT a PostgreSQL).
+     *
+     * El cierre del pool se realiza via cerrarConexiones() DESPUES del reporte.
      */
     public static void detenerTodo() {
-        System.out.println("[SHUTDOWN] Iniciando apagado limpio...");
+        LOGGER.log(Level.INFO, "[SHUTDOWN] Deteniendo infraestructura...");
 
-        if (monitorInstance != null) {
-            monitorInstance.detener();
+        safe(() -> {
+            if (monitorInstance != null) monitorInstance.detener();
+        }, "detener monitor");
+
+        safe(() -> {
+            if (webSocketInstance != null) webSocketInstance.detener();
+        }, "detener WebSocket");
+
+        safe(() -> {
+            if (trackingInstance != null) trackingInstance.finalizar();
+        }, "flush tracking a BD");
+
+        safe(() -> {
+            if (mantenimientoInstance != null) mantenimientoInstance.detener();
+        }, "detener mantenimiento diario");
+
+        LOGGER.log(Level.INFO, "[SHUTDOWN] Infraestructura detenida (Pool PostgreSQL sigue activo).");
+    }
+
+    /**
+     * Cierra el pool de conexiones HikariCP.
+     * DEBE invocarse DESPUES de generar el reporte HTML, ya que el reporte
+     * necesita realizar SELECT a PostgreSQL.
+     *
+     * Este método es el PASO FINAL del shutdown.
+     */
+    public static void cerrarConexiones() {
+        safe(() -> {
+            DatabaseConnection.cerrarPool();
+        }, "cerrar pool HikariCP");
+        LOGGER.log(Level.INFO, "[SHUTDOWN] Pool de conexiones cerrado.");
+    }
+
+    private static void safe(Runnable accion, String descripcion) {
+        try {
+            accion.run();
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE,
+                "[SHUTDOWN] Error en paso \"{0}\" — continua",
+                new Object[]{descripcion});
+            LOGGER.log(Level.SEVERE, e.getMessage(), e);
         }
-
-        if (webSocketInstance != null) {
-            webSocketInstance.detener();
-        }
-
-        // FIX: Flush final a PostgreSQL ANTES de generar informe
-        if (trackingInstance != null) {
-            trackingInstance.finalizar();
-        }
-
-        // FIX: Generar informe HTML con datos reales del usuario actual
-        if (reporteInstance != null) {
-            System.out.println("[SHUTDOWN] Generando informe diario...");
-            reporteInstance.generarInformeHoyDefault();
-        }
-
-        // FIX: Parar mantenimiento DESPUÉS del reporte para evitar condición de carrera
-        if (mantenimientoInstance != null) {
-            mantenimientoInstance.detener();
-        }
-
-        DatabaseConnection.cerrarPool();
-
-        System.out.println("[SHUTDOWN] Sistema apagado correctamente.");
     }
 }

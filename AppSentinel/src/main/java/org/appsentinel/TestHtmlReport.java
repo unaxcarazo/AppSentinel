@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
  *   3. CSS copiado al mismo directorio que el HTML.
  *   4. Datos mock reflejados en el HTML generado.
  *   5. SIN_CLASIFICAR excluido del reporte.
- *   6. Titulo del documento contiene correctamente el nombre de usuario.
+ *   6. <title> generico (Informe de Rendimiento); usuario va en <h1>.
  *
  * Instrucciones:
  *   mvn clean compile
@@ -48,7 +48,10 @@ public class TestHtmlReport {
         Files.createDirectories(Paths.get(DIR_SALIDA));
 
         // 1. Construir datos mock realistas
+        // FIX: Usar usuario del sistema real, no hardcodeado.
+        // Esto alinea el test con la realidad de produccion.
         List<Registro> registros = construirRegistrosMock();
+        String usuarioEsperado = registros.get(0).getUsuarioSistema();
 
         // 2. Generar reporte con modo estricto activo
         HtmlReportAdapter adapter = new HtmlReportAdapter(true);
@@ -63,9 +66,10 @@ public class TestHtmlReport {
 
         // 4. Ejecutar validaciones estrictas
         validarSinPlaceholdersResiduales(html);
-        validarTituloDocumento(html);
+        validarTituloDocumento(html);           // <title> generico
+        validarEncabezadoUsuario(html, usuarioEsperado);  // <h1> con usuario real
         validarEstructuraUl(html);
-        validarContenidoEsperado(html);
+        validarContenidoEsperado(html, usuarioEsperado);
         validarCssCopiado(path.getParent());  // path.getParent() = "reportes/", nunca null
 
         System.out.println("\n=== TODAS LAS VALIDACIONES PASARON ===");
@@ -79,7 +83,8 @@ public class TestHtmlReport {
 
     private static List<Registro> construirRegistrosMock() {
         List<Registro> list = new ArrayList<>();
-        String user = "testuser";
+        // FIX: Usar usuario del sistema real, no hardcodeado.
+        String user = System.getProperty("user.name");
 
         // Productivas (varias para probar mini-barras proporcionales)
         list.add(crearReg(user, "IntelliJ IDEA", Categoria.PRODUCTIVO,  "Foco activo: proyecto",      7200));
@@ -116,11 +121,12 @@ public class TestHtmlReport {
             .build();
     }
 
-    // =====================================================================
+        // =====================================================================
     // Validacion 1: Sin placeholders residuales
     // =====================================================================
 
     private static void validarSinPlaceholdersResiduales(String html) {
+        // FIX: Se añaden las dobles barras para escapar de forma correcta las llaves {{ y }}
         Pattern pattern = Pattern.compile("\\{\\{[A-Z_]+\\}\\}");
         Matcher matcher = pattern.matcher(html);
         if (matcher.find()) {
@@ -132,8 +138,9 @@ public class TestHtmlReport {
         System.out.println("[OK] No hay placeholders residuales.");
     }
 
+
     // =====================================================================
-    // Validacion 2: Titulo del documento contiene el usuario
+    // Validacion 2: Titulo del documento es GENERICO (sin usuario)
     // =====================================================================
 
     private static void validarTituloDocumento(String html) {
@@ -147,12 +154,8 @@ public class TestHtmlReport {
         String titulo = titleMatcher.group(1).trim();
         System.out.println("[INFO] Titulo detectado: [" + titulo + "]");
 
-        if (!titulo.contains("testuser")) {
-            throw new AssertionError(
-                "ERROR: El <title> no contiene el nombre de usuario. Titulo actual: [" + titulo + "]"
-            );
-        }
-
+        // FIX: El <title> debe ser generico, SIN nombre de usuario.
+        // El usuario aparece en <h1>, no en <title>.
         String tituloLower = titulo.toLowerCase();
         if (!tituloLower.contains("informe") || !tituloLower.contains("rendimiento")) {
             throw new AssertionError(
@@ -161,20 +164,54 @@ public class TestHtmlReport {
             );
         }
 
+        // Verificar que NO contiene un nombre de usuario (no debe tener {{USUARIO}} ni nombres)
+        // El titulo debe ser puramente generico
         if (titulo.contains("{{") || titulo.contains("}}")) {
             throw new AssertionError(
                 "ERROR: El <title> contiene placeholders sin reemplazar: [" + titulo + "]"
             );
         }
 
-        System.out.println("[OK] Titulo del documento correcto: " + titulo);
+        System.out.println("[OK] Titulo del documento correcto (generico): " + titulo);
     }
 
     // =====================================================================
-    // Validacion 3: Estructura <ul> valida (sin texto suelto)
+    // Validacion 2b: El <h1> SI contiene el nombre de usuario
+    // =====================================================================
+
+    private static void validarEncabezadoUsuario(String html, String usuarioEsperado) {
+        Pattern h1Pattern = Pattern.compile("<h1>(.*?)</h1>", Pattern.DOTALL);
+        Matcher h1Matcher = h1Pattern.matcher(html);
+
+        if (!h1Matcher.find()) {
+            throw new AssertionError("ERROR: No se encontro la etiqueta <h1> en el HTML");
+        }
+
+        String h1 = h1Matcher.group(1).trim();
+        System.out.println("[INFO] H1 detectado: [" + h1 + "]");
+
+        if (!h1.contains(usuarioEsperado)) {
+            throw new AssertionError(
+                "ERROR: El <h1> no contiene el nombre de usuario esperado '" + usuarioEsperado + "'. " +
+                "H1 actual: [" + h1 + "]"
+            );
+        }
+
+        if (h1.contains("{{") || h1.contains("}}")) {
+            throw new AssertionError(
+                "ERROR: El <h1> contiene placeholders sin reemplazar: [" + h1 + "]"
+            );
+        }
+
+        System.out.println("[OK] Encabezado <h1> contiene usuario correcto: " + usuarioEsperado);
+    }
+
+        // =====================================================================
+    // Validación 3: Estructura <ul> válida (sin texto suelto)
     // =====================================================================
 
     private static void validarEstructuraUl(String html) {
+        // FIX: Se escapan correctamente las comillas de la clase y el metacarácter \\s
         Pattern ulPattern = Pattern.compile(
             "<ul\\s+class=\"app-list\">(.*?)</ul>",
             Pattern.DOTALL
@@ -191,28 +228,31 @@ public class TestHtmlReport {
             String resto          = sinLi.replaceAll("\\s", "");
 
             if (!resto.isEmpty()) {
+                // FIX: Comillas escapadas en el mensaje de error
                 throw new AssertionError(
-                    "ERROR: <ul class=\"app-list\"> contiene texto suelto o tags invalidos: [" +
+                    "ERROR: <ul class=\"app-list\"> contiene texto suelto o tags inválidos: [" +
                     resto.substring(0, Math.min(resto.length(), 120)) + "]"
                 );
             }
         }
 
         if (count == 0) {
+            // FIX: Comillas escapadas en el mensaje de error
             throw new AssertionError("ERROR: No se encontraron <ul class=\"app-list\"> en el HTML");
         }
-        System.out.println("[OK] Estructura <ul> valida en " + count + " listas (sin texto suelto).");
+        System.out.println("[OK] Estructura <ul> válida en " + count + " listas (sin texto suelto).");
     }
+
 
     // =====================================================================
     // Validacion 4: Contenido esperado presente
     // =====================================================================
 
-    private static void validarContenidoEsperado(String html) {
-        // Metadatos
-        assertContiene(html, "testuser",      "Usuario en body");
-        assertContiene(html, "Modo Estricto", "Estado");
-        assertContiene(html, "TIEMPO TOTAL",  "Header tiempo total");
+    private static void validarContenidoEsperado(String html, String usuarioEsperado) {
+        // Metadatos: usuario va en <h1>, no en <title>
+        assertContiene(html, usuarioEsperado,    "Usuario en <h1>");
+        assertContiene(html, "Modo Estricto",     "Estado");
+        assertContiene(html, "TIEMPO TOTAL",      "Header tiempo total");
 
         // Leyendas / tarjetas de categoria
         assertContiene(html, "Productivo",    "Leyenda productivo");

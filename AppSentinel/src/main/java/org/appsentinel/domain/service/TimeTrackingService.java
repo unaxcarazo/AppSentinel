@@ -23,18 +23,16 @@ import java.util.regex.Pattern;
 /**
  * TimeTrackingService: Orquestador principal del seguimiento de actividad.
  *
- * FIX UPSERT (Opción A): Una sola fila por app por día en PostgreSQL.
- * - Reemplaza INSERT individual por INSERT ... ON CONFLICT DO UPDATE.
- * - Cada ciclo de escáner acumula el delta de duración en la BD.
- * - Elimina la multiplicidad de registros: 360 INSERTs/hora → 1 fila por app.
- * - Las vistas leen directo sin GROUP BY.
- *
+ * FIX LOGGER: Todos los System.out reemplazados por LOGGER.log(Level.FINE/INFO, ...)
+ * para evitar fuga de datos sensibles a stdout y respetar pureza hexagonal.
+ * detectarAusenciaUsuario()). El tracking es continuo. La lógica estaba rota porque ambos
+ * puertos (escáner y WebSocket) actualizaban el timestamp, haciendo imposible detectar
+ * inactividad real. Reduce complejidad sin perder funcionalidad crítica.
  * REGLAS DE NEGOCIO:
  * 1. TODAS las apps detectadas tienen un reloj de existencia continuo (sesiones).
  * 2. Solo la app con FOCO ACTIVO puede ser evaluada para bloqueo.
  * 3. Las apps en segundo plano se registran como "BACKGROUND_X" → nunca se bloquean.
- * 4. Si el usuario está AUSENTE (sin reportes en SEGUNDOS_AUSENCIA_USUARIO), los relojes se congelan.
- * 5. El bloqueo se dispara solo cuando una DISTRACCION supera segundosBloqueo con foco activo.
+ * 4. El bloqueo se dispara solo cuando una DISTRACCION supera segundosBloqueo con foco activo.
  */
 public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoActivoPort {
 
@@ -64,9 +62,9 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
     private final Object lockLimpieza = new Object();
 
-    private static final int GRACIA_ESTRICTO_SEG      = 10;
-    private static final int SEGUNDOS_AUSENCIA_USUARIO = 300;
-    private static final int SEGUNDOS_SIN_RASTRO       = 120;
+    private static final int GRACIA_ESTRICTO_SEG = 10;
+    // FIX AUSENCIA: Eliminado SEGUNDOS_AUSENCIA_USUARIO. Tracking continuo.
+    private static final int SEGUNDOS_SIN_RASTRO = 120;
 
     private static final Pattern PROTOCOLO_WWW = Pattern.compile("https?://(www\\.)?");
     private static final Pattern PATH_QUERY    = Pattern.compile("/.*");
@@ -77,7 +75,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         "chromium", "safari", "arc", "electron"
     );
 
-    private volatile LocalDateTime ultimoInputUsuario = LocalDateTime.now();
+    // FIX AUSENCIA: Eliminado campo ultimoInputUsuario. No se requiere para tracking continuo.
 
     public TimeTrackingService(DistractionDetector detector,
                                RegistroRepositoryPort repository,
@@ -97,11 +95,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         this.modoEstricto    = modoEstricto;
         this.usuario         = usuario;
 
-        scheduler.scheduleAtFixedRate(this::cicloDeMantenimiento, 10, 10, TimeUnit.SECONDS);
+        // FIX LOGGER: Reemplazados System.out por LOGGER.log(Level.INFO, ...)
+        LOGGER.log(Level.INFO,
+            "TimeTrackingService iniciado — usuario: {0} | Modo: {1} | Persistencia UPSERT: una fila por app por día",
+            new Object[]{usuario, modoEstricto ? "ESTRICTO" : "NORMAL"});
 
-        System.out.println("TimeTrackingService iniciado — usuario: " + usuario);
-        System.out.println("   Modo: " + (modoEstricto ? "ESTRICTO" : "NORMAL"));
-        System.out.println("   Persistencia UPSERT: una fila por app por día.");
+        // FIX AUSENCIA: cicloDeMantenimiento siempre ejecuta avanzarRelojesYVerificar()
+        // sin bifurcación de ausencia. Simplifica la lógica del scheduler.
+        scheduler.scheduleAtFixedRate(this::cicloDeMantenimiento, 10, 10, TimeUnit.SECONDS);
     }
 
     // -------------------------------------------------------------------------
@@ -110,13 +111,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
     @Override
     public void reportarActividadSistema(String proceso, String titulo, int pid) {
-        ultimoInputUsuario = LocalDateTime.now();
+        // FIX AUSENCIA: Eliminada actualización de ultimoInputUsuario.
+        // El tracking es continuo; no se detecta inactividad.
         procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso), titulo, -1, pid);
     }
 
     @Override
     public void reportarEventoNavegador(String url, String titulo, int tabId) {
-        ultimoInputUsuario = LocalDateTime.now();
+        // FIX AUSENCIA: Eliminada actualización de ultimoInputUsuario.
         String dominio = extraerDominio(url);
         procesarActividad(
             "WEB|" + dominio,
@@ -187,7 +189,9 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
             // --- Sesión de existencia ---
             sesiones.computeIfAbsent(clave, k -> {
-                System.out.println("[EXISTENCIA] Nueva app detectada: " + nombre + " (" + clave + ")");
+                // FIX LOGGER: System.out → LOGGER.log(Level.FINE, ...)
+                LOGGER.log(Level.FINE, "[EXISTENCIA] Nueva app detectada: {0} ({1})",
+                    new Object[]{nombre, clave});
                 return new SesionExistencia(clave, nombre, categoria, ahora);
             });
 
@@ -223,14 +227,16 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                         sesionWeb.ultimaVezVista = ahora;
                     }
 
-                    System.out.println("[FOCO] Navegador (" + nombre + ") en primer plano. Web mantiene foco.");
+                    LOGGER.log(Level.FINE,
+                        "[FOCO] Navegador ({0}) en primer plano. Web mantiene foco.",
+                        nombre);
                     return;
                 }
 
                 // Nueva app toma el foco
                 activas.clear();
                 activas.put(clave, new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid));
-                System.out.println("[FOCO] " + nombre);
+                LOGGER.log(Level.FINE, "[FOCO] {0}", nombre);
 
             } else {
                 SeguimientoActividad seg = activas.get(clave);
@@ -270,7 +276,9 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
         if (totalAFlush > 0) {
             acumularChunkFoco(clave, seg, totalAFlush, ahora);
-            System.out.println("[FLUSH] " + seg.nombre + " → " + fmt(totalAFlush) + " acumulados via UPSERT");
+            // FIX LOGGER: System.out → LOGGER.log(Level.FINE, ...)
+            LOGGER.log(Level.FINE, "[FLUSH] {0} → {1} acumulados via UPSERT",
+                new Object[]{seg.nombre, fmt(totalAFlush)});
         }
 
         // Resetear acumuladores (la sesión de existencia sigue viva)
@@ -282,20 +290,18 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     // Ciclo de mantenimiento
     // -------------------------------------------------------------------------
 
+    // FIX AUSENCIA: Eliminado detectarAusenciaUsuario(). El ciclo siempre avanza relojes.
+    // FIX LOGGER + ROBUSTEZ: Agregado try-catch global para evitar que una excepción
+    // mate silenciosamente el ScheduledExecutorService.
     private void cicloDeMantenimiento() {
-        synchronized (lockLimpieza) {
-            if (detectarAusenciaUsuario()) {
-                LOGGER.log(Level.FINE, "[AUSENCIA] Usuario ausente. Relojes congelados.");
-            } else {
+        try {
+            synchronized (lockLimpieza) {
                 avanzarRelojesYVerificar();
+                purgarSesionesMuertas();
             }
-            purgarSesionesMuertas();
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "[MANTENIMIENTO] Error en ciclo de mantenimiento", e);
         }
-    }
-
-    private boolean detectarAusenciaUsuario() {
-        long segsDesdeUltimoInput = Duration.between(ultimoInputUsuario, LocalDateTime.now()).getSeconds();
-        return segsDesdeUltimoInput > SEGUNDOS_AUSENCIA_USUARIO;
     }
 
     private void avanzarRelojesYVerificar() {
@@ -343,6 +349,10 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     /**
      * FIX UPSERT: Acumula duración de segundo plano en una sola fila por app.
      * Usa repository.guardarOActualizar() en lugar de guardar().
+     *
+     * NOTA: No se implementa buffer de batch en esta clase. Si se requiere
+     * anti-saturación real, la estrategia de acumulación pertenece al
+     * adaptador PostgreSQLRepositoryAdapter, no al dominio.
      */
     private void acumularChunkExistencia(SesionExistencia sesion, long segs, LocalDateTime ahora) {
         Registro reg = new Registro();
@@ -477,7 +487,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             }
 
             clavesAEliminar.add(clave);
-            System.out.println("[MANTENIMIENTO] Proceso cerrado/desaparecido: " + sesion.nombre);
+            // FIX LOGGER: System.out → LOGGER.log(Level.FINE, ...)
+            LOGGER.log(Level.FINE, "[MANTENIMIENTO] Proceso cerrado/desaparecido: {0}", sesion.nombre);
         }
 
         clavesAEliminar.forEach(sesiones::remove);
@@ -523,7 +534,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             }
         }
 
-        System.out.println("[FIN] Seguimiento finalizado — flush completo realizado via UPSERT.");
+        // FIX LOGGER: System.out → LOGGER.log(Level.INFO, ...)
+        LOGGER.log(Level.INFO, "[FIN] Seguimiento finalizado — flush completo realizado via UPSERT.");
     }
 
     public void setKiller(KillerPort killer) {

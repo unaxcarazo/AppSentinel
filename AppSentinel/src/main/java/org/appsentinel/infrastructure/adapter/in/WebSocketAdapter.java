@@ -9,6 +9,8 @@ import org.appsentinel.domain.port.in.BrowserEventPort;
 import org.appsentinel.domain.port.out.BrowserCommandPort;
 
 import java.net.InetSocketAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -19,6 +21,24 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * WebSocketAdapter: Adaptador de entrada para eventos del navegador via WebSocket.
+ *
+ * RESPONSABILIDAD: Recibir eventos de navegacion desde la extension Chrome,
+ * validar seguridad (origin, rate limit, formato), RECORTAR URL a dominio,
+ * y delegar al puerto de dominio BrowserEventPort.
+ *
+ * CAMBIO DEDUPLICACION: La clave ya no es solo el dominio, sino (dominio, tabId).
+ * Esto permite detectar cuando el usuario abre el mismo dominio en una
+ * pestaña diferente, para que TimeTrackingService pueda actualizar el tabId
+ * y el cierre de pestañas afecte la pestaña correcta.
+ *
+ * Ejemplo:
+ *   youtube.com tabId=123 → NUEVO evento (crear sesion)
+ *   youtube.com tabId=123 → DEDUPLICADO (misma pestaña, ignorar)
+ *   youtube.com tabId=456 → NUEVO evento (actualizar tabId en sesion existente)
+ *   github.com  tabId=456 → NUEVO evento (nueva sesion, dominio diferente)
+ */
 public class WebSocketAdapter extends WebSocketServer implements BrowserCommandPort {
 
     private static final Logger LOGGER = Logger.getLogger(WebSocketAdapter.class.getName());
@@ -36,7 +56,12 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
     private static final int TITULO_MAX_LEN = 500;
 
     private final Map<WebSocket, AtomicInteger> mensajesPorSegundo = new ConcurrentHashMap<>();
-    private final Map<WebSocket, String> ultimaUrlPorCliente = new ConcurrentHashMap<>();
+
+    /**
+     * CAMBIO: Trackea ultimo evento por (dominio, tabId) en lugar de solo dominio.
+     * Permite detectar cambio de pestaña dentro del mismo dominio.
+     */
+    private final Map<WebSocket, UltimoEvento> ultimoEventoPorCliente = new ConcurrentHashMap<>();
 
     private final ScheduledExecutorService rateLimitReset = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "WS-RateLimit-Reset");
@@ -49,6 +74,20 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
         this.browserEventPort = browserEventPort;
         rateLimitReset.scheduleAtFixedRate(() -> mensajesPorSegundo.clear(), 1, 1, TimeUnit.SECONDS);
         this.setConnectionLostTimeout(10);
+    }
+
+    /**
+     * Record interno para trackear el ultimo evento de una conexion WebSocket.
+     * Usado para deduplicacion: si (dominio, tabId) es igual al ultimo, se ignora.
+     */
+    private static final class UltimoEvento {
+        final String dominio;
+        final int tabId;
+
+        UltimoEvento(String dominio, int tabId) {
+            this.dominio = dominio;
+            this.tabId = tabId;
+        }
     }
 
     @Override
@@ -91,25 +130,97 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
             String url = json.has("url") ? json.get("url").asText() : null;
             String titulo = json.has("titulo") ? json.get("titulo").asText() : null;
 
-            // FIX: Normalizar tabId que puede venir como string con separadores de miles
+            // Normalizar tabId que puede venir como string con separadores de miles
             int tabId = extraerTabId(json);
 
             if (url == null || url.isBlank() || url.length() > URL_MAX_LEN) return;
-            if (!url.matches("https?://[\\w\\-\\.]+.*")) return;
+            if (!url.matches("https?://[\\\\w\\\\-\\\\.]+.*")) return;
 
-            String ultimaUrl = ultimaUrlPorCliente.get(conn);
-            if (url.equals(ultimaUrl)) return;
-            ultimaUrlPorCliente.put(conn, url);
+            // Recortar URL a dominio antes de enviar al dominio
+            String urlRecortada = recortarUrlIdempotente(url);
+
+            // ========== CAMBIO DEDUPLICACION: clave = (dominio, tabId) ==========
+            // ANTES: if (urlRecortada.equals(ultimaUrl)) return;
+            // DESPUES: deduplicar solo si Mismo dominio Y misma pestaña
+            UltimoEvento ultimo = ultimoEventoPorCliente.get(conn);
+            if (ultimo != null && ultimo.dominio.equals(urlRecortada) && ultimo.tabId == tabId) {
+                // Mismo dominio, misma pestaña → deduplicar (sin cambio relevante)
+                return;
+            }
+            // Guardar nuevo evento (dominio, tabId) para proxima deduplicacion
+            ultimoEventoPorCliente.put(conn, new UltimoEvento(urlRecortada, tabId));
+            // ===================================================================
 
             if (titulo != null) {
                 titulo = titulo.replaceAll("[\\p{Cntrl}]", "").trim();
                 if (titulo.length() > TITULO_MAX_LEN) titulo = titulo.substring(0, TITULO_MAX_LEN);
             }
 
-            browserEventPort.reportarEventoNavegador(url, titulo, tabId);
+            // Delegar al dominio con URL RECORTADA (dominio) y tabId actual
+            browserEventPort.reportarEventoNavegador(urlRecortada, titulo, tabId);
 
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "[WS] Error procesando mensaje JSON: {0}", e.getMessage());
+        }
+    }
+
+    /**
+     * Recorta una URL completa a su dominio principal.
+     *
+     * IDEMPOTENTE: Si la entrada ya es un dominio simple, se devuelve sin modificaciones.
+     *
+     * Ejemplos:
+     *   "https://www.youtube.com/watch?v=abc123" → "youtube.com"
+     *   "http://github.com/moonshot-ai/kimi"     → "github.com"
+     *   "https://docs.oracle.com/javase/8/"      → "docs.oracle.com"
+     *   "youtube.com"                            → "youtube.com" (idempotente)
+     *   null/blank                              → "desconocido"
+     */
+    private String recortarUrlIdempotente(String url) {
+        if (url == null || url.isBlank()) {
+            return "desconocido";
+        }
+
+        // Si no contiene protocolo ni path, asumimos que ya es dominio
+        if (!url.contains("://") && !url.contains("/")) {
+            return url.toLowerCase();
+        }
+
+        try {
+            URI uri = new URI(url);
+            String host = uri.getHost();
+
+            if (host == null || host.isBlank()) {
+                // Fallback: extraer manualmente entre :// y /
+                int inicio = url.indexOf("://");
+                if (inicio != -1) {
+                    inicio += 3; // saltar "://"
+                    int fin = url.indexOf("/", inicio);
+                    host = (fin == -1) ? url.substring(inicio) : url.substring(inicio, fin);
+                }
+            }
+
+            if (host == null || host.isBlank()) {
+                return url.toLowerCase(); // fallback: devolver original en minusculas
+            }
+
+            // Quitar prefijo www. si existe
+            host = host.toLowerCase();
+            if (host.startsWith("www.")) {
+                host = host.substring(4);
+            }
+
+            return host;
+
+        } catch (URISyntaxException e) {
+            // Fallback manual si URI no puede parsear
+            String limpia = url.toLowerCase().trim();
+            if (limpia.startsWith("http://")) limpia = limpia.substring(7);
+            if (limpia.startsWith("https://")) limpia = limpia.substring(8);
+            if (limpia.startsWith("www.")) limpia = limpia.substring(4);
+            int slash = limpia.indexOf("/");
+            if (slash != -1) limpia = limpia.substring(0, slash);
+            return limpia.isBlank() ? "desconocido" : limpia;
         }
     }
 
@@ -135,7 +246,7 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
             try {
                 return Integer.parseInt(limpio);
             } catch (NumberFormatException e) {
-                LOGGER.log(Level.WARNING, "[WS] tabId no numérico después de limpieza: '{0}' (raw: '{1}')", 
+                LOGGER.log(Level.WARNING, "[WS] tabId no numérico después de limpieza: '{0}' (raw: '{1}')",
                     new Object[]{limpio, raw});
                 return -1;
             }
@@ -148,7 +259,8 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
     @Override
     public void onClose(WebSocket conn, int code, String reason, boolean remote) {
         mensajesPorSegundo.remove(conn);
-        ultimaUrlPorCliente.remove(conn);
+        // CAMBIO: limpiar ultimoEventoPorCliente en lugar de ultimaUrlPorCliente
+        ultimoEventoPorCliente.remove(conn);
         LOGGER.log(Level.INFO, "[WS] Conexión cerrada con código {0}. Motivo: {1}", new Object[]{code, reason});
     }
 
@@ -157,7 +269,8 @@ public class WebSocketAdapter extends WebSocketServer implements BrowserCommandP
         LOGGER.log(Level.SEVERE, "[WS] Error interno en canal", e);
         if (conn != null) {
             mensajesPorSegundo.remove(conn);
-            ultimaUrlPorCliente.remove(conn);
+            // CAMBIO: limpiar ultimoEventoPorCliente en lugar de ultimaUrlPorCliente
+            ultimoEventoPorCliente.remove(conn);
         }
     }
 

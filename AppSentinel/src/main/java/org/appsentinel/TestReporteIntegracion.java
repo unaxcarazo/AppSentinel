@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -22,23 +23,17 @@ import java.util.stream.Collectors;
  * existe en PostgreSQL, genera el informe HTML, y valida que el HTML
  * refleja fielmente los datos reales de la base de datos.
  *
+ * FIX TOP 5: Ajustado para validar que el HTML muestra maximo 5 apps por
+ * categoria, ya que ReporteDiarioService aplica este filtro antes de generar.
+ *
  * RUTA FIJA DEL INFORME:
  *   %USER_HOME%/AppSentinel/reports/DelayLog_integracion.html
- *   (misma estructura que produccion: %USER_HOME%/AppSentinel/reports/)
  *
  * Precondicion: PostgreSQL corriendo con seed SQL ejecutado y actividad
  * registrada (ej: haber ejecutado TestEscritorio o TestWeb previamente).
- *
- * FLUJO:
- *   1. Lee TODOS los registros del usuario para hoy desde PostgreSQL.
- *   2. Genera informe HTML con esos datos reales en ruta fija.
- *   3. Valida que el HTML contiene CADA app de la BD con su tiempo EXACTO.
- *   4. Muestra la ruta absoluta del informe generado.
  */
 public class TestReporteIntegracion {
 
-    // RUTA FIJA: coincide con estructura de produccion en AppSentinel.java
-    // %USER_HOME%/AppSentinel/reports/DelayLog_integracion.html
     private static final Path DIR_REPORTES = Paths.get(
         System.getProperty("user.home"), "AppSentinel", "reports"
     );
@@ -49,8 +44,7 @@ public class TestReporteIntegracion {
     public static void main(String[] args) throws Exception {
         System.out.println("=== PRUEBA DE INTEGRACION: Reporte Diario ===");
         System.out.println("Precondicion: PostgreSQL corriendo con seed SQL ejecutado.");
-        System.out.println("Precondicion: Debe existir actividad registrada hoy (ejecutar");
-        System.out.println("              TestEscritorio o TestWeb primero).");
+        System.out.println("Precondicion: Debe existir actividad registrada hoy.");
 
         // 1. Adaptadores reales
         PostgreSQLRepositoryAdapter repo = new PostgreSQLRepositoryAdapter();
@@ -61,30 +55,27 @@ public class TestReporteIntegracion {
             repo, htmlAdapter, usuario
         );
 
-        // 2. Leer registros EXISTENTES de la BD (sin insertar nada)
+        // 2. Leer registros EXISTENTES de la BD
         System.out.println("\n>>> Leyendo registros existentes en BD <<<");
         List<Registro> registrosReales = repo.obtenerTodosHoy(usuario);
 
         if (registrosReales.isEmpty()) {
             System.out.println("[ADVERTENCIA] Sin registros en BD para hoy.");
             System.out.println("Ejecuta primero TestEscritorio o TestWeb para generar datos.");
-            System.out.println("Generando reporte vacio para validar estructura...");
         }
 
         Map<String, Long> tiemposPorApp = sumarPorApp(registrosReales);
         tiemposPorApp.forEach((app, seg) -> 
             System.out.println("  [BD] " + app + ": " + fmt(seg)));
 
-        // 3. Generar informe con datos reales de la BD en RUTA FIJA
+        // 3. Generar informe con datos reales
         System.out.println("\n>>> Generando informe HTML <<<");
         System.out.println("Ruta destino: " + RUTA_SALIDA);
-
-        // Crear directorios intermedios si no existen
         Files.createDirectories(DIR_REPORTES);
 
         reporteService.generarInformeHoy(RUTA_SALIDA);
 
-        // 4. Validar HTML generado contra datos reales de la BD
+        // 4. Validar HTML generado
         System.out.println("\n>>> Validando HTML generado <<<");
         Path rutaArchivo = Paths.get(RUTA_SALIDA);
         String html = Files.readString(rutaArchivo, StandardCharsets.UTF_8);
@@ -92,23 +83,22 @@ public class TestReporteIntegracion {
         mostrarTituloReal(html);
         mostrarH1Real(html);
 
-        // Validar que CADA app de la BD aparece en el HTML con tiempo exacto
         if (!registrosReales.isEmpty()) {
-            validarDatosRealesEnHtml(html, usuario, tiemposPorApp);
+            // FIX TOP 5: Validar que apps en HTML existen en BD (no todas las de BD estan en HTML)
+            validarAppsHtmlContraBd(html, tiemposPorApp);
+            // FIX TOP 5: Validar maximo 5 apps por categoria
+            validarMaximo5PorCategoria(html);
         } else {
             System.out.println("[SKIP] Sin datos en BD, omitiendo validacion de contenido");
         }
 
-        // Validar estructura siempre
         validarSinPlaceholdersResiduales(html);
         validarUsuarioEnH1(html, usuario);
 
-        // Mostrar ruta absoluta del informe generado
         System.out.println("\n[INFO] Informe generado en: " + rutaArchivo.toAbsolutePath());
 
-        // Cleanup seguro (eliminar archivo de prueba)
         Files.deleteIfExists(rutaArchivo);
-        System.out.println("[INFO] Archivo de prueba eliminado: " + rutaArchivo.toAbsolutePath());
+        System.out.println("[INFO] Archivo de prueba eliminado.");
 
         System.out.println("\n=== TODAS LAS VALIDACIONES PASARON ===");
     }
@@ -127,7 +117,7 @@ public class TestReporteIntegracion {
     }
 
     // =====================================================================
-    // Validacion del HTML contra datos reales de la BD
+    // Validaciones del HTML
     // =====================================================================
 
     private static void mostrarTituloReal(String html) {
@@ -147,36 +137,79 @@ public class TestReporteIntegracion {
     }
 
     /**
-     * Valida que el HTML contiene CADA app de la BD con su tiempo EXACTO.
-     * 
-     * Busqueda estructurada: valida que el nombre aparece dentro de
-     * <span class="app-name">, no como substring accidental.
+     * FIX TOP 5: Valida que las apps que aparecen en el HTML existen en la BD.
+     * Ya no valida que TODAS las apps de la BD esten en el HTML (puede haber mas de 5).
      */
-    private static void validarDatosRealesEnHtml(String html, String usuario,
-                                                    Map<String, Long> tiemposPorApp) {
-        int validados = 0;
-        for (Map.Entry<String, Long> entry : tiemposPorApp.entrySet()) {
-            String nombreApp = entry.getKey();
-            long tiempoSeg = entry.getValue();
-            String tiempoFmt = fmt(tiempoSeg);
-
-            // Busqueda estructurada dentro del tag app-name
-            String nombreEscapado = escaparHtml(nombreApp);
-            String appEnHtml = "<span class=\"app-name\">" + nombreEscapado + "</span>";
-
-            if (!html.contains(appEnHtml)) {
-                // Fallback: sin escapar
-                String appEnHtmlRaw = "<span class=\"app-name\">" + nombreApp + "</span>";
-                if (!html.contains(appEnHtmlRaw)) {
-                    throw new AssertionError(
-                        "ERROR: App '" + nombreApp + "' (tiempo " + tiempoFmt + ") " +
-                        "no aparece en el HTML generado"
-                    );
-                }
+    private static void validarAppsHtmlContraBd(String html, Map<String, Long> tiemposPorApp) {
+        List<String> appsEnHtml = extraerAppsDeHtml(html);
+        
+        for (String appHtml : appsEnHtml) {
+            if (!tiemposPorApp.containsKey(appHtml)) {
+                throw new AssertionError(
+                    "ERROR: App '" + appHtml + "' aparece en HTML pero no existe en BD"
+                );
             }
         }
+        
+        System.out.println("[OK] " + appsEnHtml.size() + " apps en HTML validadas contra BD");
     }
-    
+
+    /**
+     * FIX TOP 5: Extrae los nombres de apps del HTML generado.
+     */
+    private static List<String> extraerAppsDeHtml(String html) {
+        List<String> apps = new ArrayList<>();
+        Pattern p = Pattern.compile("<span class=\"app-name\">(.*?)</span>");
+        Matcher m = p.matcher(html);
+        while (m.find()) {
+            // Desescapar HTML para comparar con nombres de BD
+            String app = m.group(1)
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"");
+            apps.add(app);
+        }
+        return apps;
+    }
+
+    /**
+     * FIX TOP 5: Valida que cada seccion del HTML tiene maximo 5 apps.
+     */
+    private static void validarMaximo5PorCategoria(String html) {
+        Pattern ulPattern = Pattern.compile("<ul\\s+class=\"app-list\">(.*?)</ul>", Pattern.DOTALL);
+        Matcher ulMatcher = ulPattern.matcher(html);
+        
+        String[] nombresSecciones = {"Productivas", "Distracciones", "Neutrales", "Background"};
+        int seccion = 0;
+        int seccionesValidadas = 0;
+        
+        while (ulMatcher.find()) {
+            if (seccion >= nombresSecciones.length) break;
+            
+            String contenidoUl = ulMatcher.group(1);
+            long countLi = Pattern.compile("<li").matcher(contenidoUl).results().count();
+            
+            if (countLi > 5) {
+                throw new AssertionError(
+                    "ERROR: Seccion " + nombresSecciones[seccion] + 
+                    " tiene " + countLi + " apps (maximo permitido: 5)"
+                );
+            }
+            
+            // Solo contar secciones con contenido real (no "Sin actividad registrada")
+            if (countLi > 0 && !contenidoUl.contains("Sin actividad registrada")) {
+                System.out.println("[OK] Seccion " + nombresSecciones[seccion] + 
+                                  ": " + countLi + " apps (max 5)");
+                seccionesValidadas++;
+            }
+            
+            seccion++;
+        }
+        
+        System.out.println("[OK] " + seccionesValidadas + " secciones con apps validadas");
+    }
+
     private static void validarUsuarioEnH1(String html, String usuario) {
         Pattern p = Pattern.compile("<h1>(.*?)</h1>", Pattern.DOTALL);
         Matcher m = p.matcher(html);
@@ -206,20 +239,7 @@ public class TestReporteIntegracion {
     }
 
     // =====================================================================
-    // Escapado HTML (replica HtmlReportAdapter.escaparHtml)
-    // =====================================================================
-
-    private static String escaparHtml(String texto) {
-        if (texto == null) return "";
-        return texto
-            .replace("&",  "&amp;")
-            .replace("<",  "&lt;")
-            .replace(">",  "&gt;")
-            .replace("\"", "&quot;");
-    }
-
-    // =====================================================================
-    // Formateador de tiempo (igual que HtmlReportAdapter)
+    // Formateador de tiempo
     // =====================================================================
 
     private static String fmt(long segundos) {

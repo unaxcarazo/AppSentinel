@@ -8,10 +8,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import org.appsentinel.domain.model.Categoria;
 
 /**
  * ReporteDiarioService: Servicio de aplicacion para generacion de informes HTML.
@@ -26,10 +30,9 @@ import java.util.logging.Logger;
  *   1. TimeTrackingService acumula duracion durante el dia.
  *   2. Al cerrar AppSentinel, este servicio lee todos los registros de hoy.
  *   3. Delega en HtmlReportAdapter para generar DelayLog.html con datos reales.
- *   4. El usuario abre DelayLog.html en su navegador para ver el resumen.
  *
- * FIX: Se invoca desde AppWiring.detenerTodo() DESPUES de tracking.finalizar()
- * para garantizar que todos los chunks pendientes ya esten en PostgreSQL.
+ * INVOCACION: AppSentinel.shutdownConReporte() → ctx.reporteService().generarInformeHoy(ruta)
+ *             El reporte se genera DESPUES de tracking.finalizar() (pool activo para SELECT).
  */
 public class ReporteDiarioService {
 
@@ -38,10 +41,6 @@ public class ReporteDiarioService {
     private final RegistroRepositoryPort repositorio;
     private final ReportPort reporteHtml;
     private final String usuario;
-
-    // FIX: modoEstricto eliminado. HtmlReportAdapter ya conoce el modo
-    // porque se construye con el en AppWiring. Recibirlo aqui tambien
-    // era redundante y creaba confusion sobre quien es la fuente de verdad.
 
     public ReporteDiarioService(RegistroRepositoryPort repositorio,
                                 ReportPort reporteHtml,
@@ -58,17 +57,12 @@ public class ReporteDiarioService {
      * los chunks pendientes a PostgreSQL. Si no, el informe tendra datos incompletos.</p>
      *
      * @param rutaSalida Ruta absoluta o relativa donde guardar DelayLog.html.
-     *                   El directorio padre debe existir; este metodo lo crea
-     *                   si no existe para evitar NoSuchFileException silenciosa
-     *                   dentro del adaptador.
      */
     public void generarInformeHoy(String rutaSalida) {
         LOGGER.log(Level.INFO,
             "[REPORTE] Generando informe diario para usuario: {0}",
             usuario);
 
-        // Garantizar que el directorio padre exista antes de delegar al adaptador.
-        // HtmlReportAdapter usa Files.writeString() que no crea directorios intermedios.
         Path path = Paths.get(rutaSalida);
         Path directorioPadre = path.getParent();
         if (directorioPadre != null) {
@@ -92,23 +86,57 @@ public class ReporteDiarioService {
             return;
         }
 
-        LOGGER.log(Level.INFO,
-            "[REPORTE] {0} registros encontrados para hoy. Generando HTML...",
-            registrosHoy.size());
+        // 2. FIX TOP 5: Preparar datos — agrupar, ordenar, truncar a 5 por categoria
+        List<Registro> registrosFiltrados = prepararDatosParaReporte(registrosHoy, 5);
 
-        // 2. Delegar al adaptador HTML (inyectado, no instanciado aqui)
-        reporteHtml.generarReporteHtml(registrosHoy, rutaSalida);
+        LOGGER.log(Level.INFO,
+            "[REPORTE] {0} registros en BD, {1} tras filtrar TOP 5 por categoria. Generando HTML...",
+            new Object[]{registrosHoy.size(), registrosFiltrados.size()});
+
+        // 3. Delegar al adaptador HTML (firma del puerto sin cambios)
+        reporteHtml.generarReporteHtml(registrosFiltrados, rutaSalida);
 
         LOGGER.log(Level.INFO, "[REPORTE] Informe generado en: {0}", rutaSalida);
     }
 
+    // -------------------------------------------------------------------------
+    // FIX TOP 5: Preparacion de datos para presentacion
+    // -------------------------------------------------------------------------
+
     /**
-     * Genera el informe en la ruta por defecto del directorio de trabajo.
-     * Uso: AppWiring.detenerTodo() llama esto sin preocuparse de rutas.
+     * Prepara los registros para el reporte HTML.
+     *
+     * <p>Agrupa por categoria, ordena por duracion descendente dentro de cada grupo,
+     * y limita a N apps por categoria. Retorna una lista plana con los registros
+     * seleccionados.</p>
+     *
+     * @param registros Lista cruda de la BD (una fila por app, ya acumulada via UPSERT)
+     * @param limite    Maximo de apps por categoria (ej: 5)
+     * @return Lista plana con maximo N registros por categoria, lista para el adaptador
      */
-    public void generarInformeHoyDefault() {
-        String nombreArchivo = "DelayLog_" + LocalDate.now() + ".html";
-        Path rutaDefault = Paths.get(System.getProperty("user.dir"), nombreArchivo);
-        generarInformeHoy(rutaDefault.toString());
+    private List<Registro> prepararDatosParaReporte(List<Registro> registros, int limite) {
+    if (registros == null || registros.isEmpty()) {
+        return List.of();
     }
+
+    // Agrupar por categoria, fusionando BACKGROUND_* en "BACKGROUND"
+    Map<String, List<Registro>> porCategoria = registros.stream()
+        .collect(Collectors.groupingBy(r -> {
+            String cat = r.getCategoria();
+            return cat.startsWith(Categoria.BACKGROUND) ? Categoria.BACKGROUND : cat;
+        }));
+
+    List<Registro> resultado = new ArrayList<>();
+
+    for (List<Registro> grupo : porCategoria.values()) {
+        // Ordenar por duracion descendente y truncar
+        List<Registro> top = grupo.stream()
+            .sorted(Comparator.comparingLong(Registro::getDuracionSeg).reversed())
+            .limit(limite)
+            .collect(Collectors.toList());
+        resultado.addAll(top);
+    }
+
+    return resultado;
+}
 }

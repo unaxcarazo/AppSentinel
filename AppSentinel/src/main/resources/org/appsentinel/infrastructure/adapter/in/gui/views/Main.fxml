@@ -1,68 +1,68 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import javafx.scene.layout.BorderPane?>
-<?import javafx.scene.layout.VBox?>
-<?import javafx.scene.layout.Region?>
-<?import javafx.scene.layout.StackPane?>
-<?import javafx.scene.control.Label?>
-<?import javafx.scene.control.Button?>
+<?import java.net.URL?>
+<?import javafx.geometry.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.shape.Circle?>
 
-<BorderPane xmlns:fx="http://javafx.com/fxml/1"
-            xmlns="http://javafx.com/javafx/25.0.2"
-            fx:controller="org.appsentinel.infrastructure.adapter.in.gui.controller.MainController"
-            prefWidth="1200" prefHeight="700"
-            style="-fx-background-color: #0d1117;"> 
-
-    <left>
-        <VBox prefWidth="220" spacing="10" style="-fx-padding: 25 15 25 15; -fx-background-color: #0d1117;">
+<HBox fx:id="mainRoot" minWidth="950.0" prefHeight="700.0" prefWidth="1100.0" styleClass="root" stylesheets="@main.css" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="org.appsentinel.infrastructure.adapter.in.gui.controller.MainController">
+    <children>
+        <!-- Sidebar -->
+        <VBox fx:id="sidebar" prefWidth="230.0" styleClass="sidebar">
+            <padding>
+                <Insets bottom="20.0" left="12.0" right="12.0" top="20.0" />
+            </padding>
             <children>
-                <Label text="⚡ EXTREMA" style="-fx-text-fill: #ffffff; -fx-font-size: 18; -fx-font-weight: bold; -fx-padding: 0 0 20 5;"/>
-                
-                <Button fx:id="btnDashboard"
-                        text="📊 General Dashboard"
-                        styleClass="menu-button"
-                        maxWidth="500.0"
-                        onAction="#onDashboard"/>
-                        
-                <Button fx:id="btnAppBlocker"
-                        text="🚫 App Blocker"
-                        styleClass="menu-button"
-                        maxWidth="500.0"
-                        onAction="#onAppBlocker"/>
-                        
-                <Button fx:id="btnDeepFocus"
-                        text="🎯 Deep Focus Area"
-                        styleClass="menu-button"
-                        maxWidth="500.0"
-                        onAction="#onDeepFocus"/>
-                        
-                <Button fx:id="btnPerformance"
-                        text="📉 Performance &amp; Processes"
-                        styleClass="menu-button"
-                        maxWidth="500.0"
-                        onAction="#onPerformance"/>
-                        
-                <Button fx:id="btnHistory"
-                        text="🔄 Usage History"
-                        styleClass="menu-button"
-                        maxWidth="500.0"
-                        onAction="#onHistory"/>
-                        
+                <!-- Logo Area -->
+                <HBox alignment="CENTER_LEFT" spacing="8.0">
+                    <padding>
+                        <Insets bottom="20.0" left="8.0" />
+                    </padding>
+                    <children>
+                        <Circle radius="5.0" styleClass="sidebar-dot-on" />
+                        <Label styleClass="sidebar-logo" text="SENTINEL" />
+                        <Region HBox.hgrow="ALWAYS" />
+
+                    </children>
+                </HBox>
+
+                <!-- Navigation Items -->
+                <VBox spacing="10.0">
+                    <padding>
+                        <Insets top="10.0" />
+                    </padding>
+                    <children>
+                        <Button fx:id="btnDashboard" alignment="CENTER_LEFT" graphicTextGap="10.0" maxWidth="Infinity" minHeight="-Infinity" wrapText="true" onAction="#onDashboard" styleClass="nav-item, nav-item-active" text="General Dashboard">
+                            <graphic>
+                                <Region styleClass="nav-icon, icon-dashboard" />
+                            </graphic>
+                        </Button>
+                        <Button fx:id="btnAppBlocker" alignment="CENTER_LEFT" graphicTextGap="10.0" maxWidth="Infinity" minHeight="-Infinity" wrapText="true" onAction="#onAppBlocker" styleClass="nav-item" text="App Blocker">
+                            <graphic>
+                                <Region styleClass="nav-icon, icon-blocker" />
+                            </graphic>
+                        </Button>
+                        <Button fx:id="btnPerformance" alignment="CENTER_LEFT" graphicTextGap="10.0" maxWidth="Infinity" minHeight="-Infinity" wrapText="true" onAction="#onPerformance" styleClass="nav-item" text="Performance &amp; Processes">
+                            <graphic>
+                                <Region styleClass="nav-icon, icon-performance" />
+                            </graphic>
+                        </Button>
+                        <Button fx:id="btnHistory" alignment="CENTER_LEFT" graphicTextGap="10.0" maxWidth="Infinity" minHeight="-Infinity" wrapText="true" onAction="#onHistory" styleClass="nav-item" text="Usage History">
+                            <graphic>
+                                <Region styleClass="nav-icon, icon-history" />
+                            </graphic>
+                        </Button>
+                    </children>
+                </VBox>
+
                 <Region VBox.vgrow="ALWAYS" />
-                
-                <Button fx:id="btnDeepFocus"
-                        text="🛡️ START DEEP FOCUS"
-                        styleClass="deep-focus-button-orange" 
-                        onAction="#onDeepFocus"
-                        maxWidth="500.0"/>
-                        
+
+
             </children>
         </VBox>
-    </left>
 
-    <center>
-        <StackPane fx:id="contenedor" style="-fx-background-color: #0d1117;">
-        </StackPane>
-    </center>
-
-</BorderPane>
+        <!-- Main Content Area -->
+        <StackPane fx:id="contenedor" HBox.hgrow="ALWAYS" />
+    </children>
+</HBox>

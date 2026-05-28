@@ -1,4 +1,3 @@
-/*
 package org.appsentinel.infrastructure.adapter.in.gui.controller;
 
 import javafx.animation.FadeTransition;
@@ -16,8 +15,7 @@ import javafx.scene.paint.RadialGradient;
 import javafx.scene.paint.Stop;
 import javafx.scene.shape.Rectangle;
 import javafx.util.Duration;
-import org.appsentinel.domain.port.in.BlockingUseCase;
-import org.appsentinel.infrastructure.adapter.in.gui.controller.Controllable; // IMPORTACIÓN CORREGIDA (Línea 18)
+
 
 import java.net.URL;
 import java.time.LocalDate;
@@ -28,36 +26,35 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.appsentinel.domain.port.out.KillerPort;
+import org.appsentinel.domain.port.out.NotificacionPort;
+
 public class DeepFocusController implements Initializable, Controllable {
 
-    @FXML
-    private Rectangle gradientBg;
-    @FXML
-    private Button btnModeChrono, btnModeSchedule;
-    @FXML
-    private VBox panelChrono, panelSchedule;
-    @FXML
-    private Label lblTimer;
-    @FXML
-    private HBox boxAddTime;
-    @FXML
-    private DatePicker datePicker;
-    @FXML
-    private ComboBox<String> comboHH, comboMM;
-    @FXML
-    private Button btnStart, btnStop;
+    @FXML private Rectangle gradientBg;
+    @FXML private Button btnModeChrono, btnModeSchedule;
+    @FXML private VBox panelChrono, panelSchedule;
+    @FXML private Label lblTimer;
+    @FXML private HBox boxAddTime;
+    @FXML private DatePicker datePicker;
+    @FXML private ComboBox<String> comboHH, comboMM;
+    @FXML private Button btnStart, btnStop;
+    
+    private KillerPort killer;
+    private NotificacionPort notificador;
 
     private int countdownSeconds = 0;
     private ScheduledExecutorService timerService;
-    private BlockingUseCase blockingUseCase;
 
     private RadialGradient chronometerGradient;
     private RadialGradient scheduleGradient;
 
-    @Override
-    public void init(AppContext ctx) {
-        this.blockingUseCase = ctx.detector();
-    }
+   @Override
+public void init(AppContext ctx) {
+    // Ahora usas lo que SÍ existe en el AppContext
+    this.killer = ctx.killer();
+    this.notificador = ctx.notificacion();
+}
 
     @Override
     public void initialize(URL url, ResourceBundle rb) {
@@ -70,32 +67,25 @@ public class DeepFocusController implements Initializable, Controllable {
         chronometerGradient = new RadialGradient(0, 0, 0.5, 0.5, 0.8, true, CycleMethod.NO_CYCLE,
                 new Stop(0, Color.web("#FF3D00", 0.3)),
                 new Stop(1, Color.TRANSPARENT));
-
+                
         scheduleGradient = new RadialGradient(0, 0, 0.5, 0.5, 0.8, true, CycleMethod.NO_CYCLE,
                 new Stop(0, Color.web("#00E5FF", 0.2)),
                 new Stop(1, Color.TRANSPARENT));
 
-        if (gradientBg != null) {
-            gradientBg.setFill(chronometerGradient);
-            FadeTransition ft = new FadeTransition(Duration.seconds(3.5), gradientBg);
-            ft.setFromValue(0.3);
-            ft.setToValue(0.8);
-            ft.setCycleCount(Timeline.INDEFINITE);
-            ft.setAutoReverse(true);
-            ft.play();
-        }
+        gradientBg.setFill(chronometerGradient);
+
+        FadeTransition ft = new FadeTransition(Duration.seconds(3.5), gradientBg);
+        ft.setFromValue(0.3);
+        ft.setToValue(0.8);
+        ft.setCycleCount(Timeline.INDEFINITE);
+        ft.setAutoReverse(true);
+        ft.play();
     }
 
     private void setupTimeSelectors() {
-        if (comboHH == null || comboMM == null || datePicker == null) return;
+        for(int i=0; i<24; i++) comboHH.getItems().add(String.format("%02d", i));
+        for(int i=0; i<60; i++) comboMM.getItems().add(String.format("%02d", i));
         
-        for (int i = 0; i < 24; i++) {
-            comboHH.getItems().add(String.format("%02d", i));
-        }
-        for (int i = 0; i < 60; i++) {
-            comboMM.getItems().add(String.format("%02d", i));
-        }
-
         comboHH.getSelectionModel().select(String.format("%02d", LocalTime.now().getHour()));
         comboMM.getSelectionModel().select(String.format("%02d", LocalTime.now().getMinute()));
         datePicker.setValue(LocalDate.now());
@@ -103,56 +93,30 @@ public class DeepFocusController implements Initializable, Controllable {
 
     @FXML
     private void showChrono() {
-        // CORRECCIÓN DE SEGURIDAD (Línea 50)
-        if (btnModeChrono != null) btnModeChrono.getStyleClass().add("df-mode-btn-orange");
-        if (btnModeSchedule != null) btnModeSchedule.getStyleClass().remove("df-mode-btn-cyan");
-        if (gradientBg != null) gradientBg.setFill(chronometerGradient);
-        if (panelChrono != null) {
-            panelChrono.setVisible(true);
-            panelChrono.setManaged(true);
-        }
-        if (panelSchedule != null) {
-            panelSchedule.setVisible(false);
-            panelSchedule.setManaged(false);
-        }
+        btnModeChrono.getStyleClass().add("df-mode-btn-orange");
+        btnModeSchedule.getStyleClass().remove("df-mode-btn-cyan");
+        gradientBg.setFill(chronometerGradient);
+        panelChrono.setVisible(true);
+        panelChrono.setManaged(true);
+        panelSchedule.setVisible(false);
+        panelSchedule.setManaged(false);
     }
 
     @FXML
     private void showSchedule() {
-        // CORRECCIÓN DE SEGURIDAD (Línea 57)
-        if (btnModeSchedule != null) btnModeSchedule.getStyleClass().add("df-mode-btn-cyan");
-        if (btnModeChrono != null) btnModeChrono.getStyleClass().remove("df-mode-btn-orange");
-        if (gradientBg != null) gradientBg.setFill(scheduleGradient);
-        if (panelChrono != null) {
-            panelChrono.setVisible(false);
-            panelChrono.setManaged(false);
-        }
-        if (panelSchedule != null) {
-            panelSchedule.setVisible(true);
-            panelSchedule.setManaged(true);
-        }
+        btnModeSchedule.getStyleClass().add("df-mode-btn-cyan");
+        btnModeChrono.getStyleClass().remove("df-mode-btn-orange");
+        gradientBg.setFill(scheduleGradient);
+        panelChrono.setVisible(false);
+        panelChrono.setManaged(false);
+        panelSchedule.setVisible(true);
+        panelSchedule.setManaged(true);
     }
 
-    @FXML
-    private void add5Min() {
-        addTime(5 * 60);
-    }
-
-    @FXML
-    private void add15Min() {
-        addTime(15 * 60);
-    }
-
-    @FXML
-    private void add30Min() {
-        addTime(30 * 60);
-    }
-
-    @FXML
-    private void resetTimer() {
-        countdownSeconds = 0;
-        updateTimerDisplay();
-    }
+    @FXML private void add5Min() { addTime(5 * 60); }
+    @FXML private void add15Min() { addTime(15 * 60); }
+    @FXML private void add30Min() { addTime(30 * 60); }
+    @FXML private void resetTimer() { countdownSeconds = 0; updateTimerDisplay(); }
 
     private void addTime(int seconds) {
         countdownSeconds += seconds;
@@ -164,25 +128,17 @@ public class DeepFocusController implements Initializable, Controllable {
         int m = (countdownSeconds % 3600) / 60;
         int s = countdownSeconds % 60;
         Platform.runLater(() -> {
-            if (lblTimer != null) {
-                lblTimer.setText(String.format("%02d:%02d:%02d", h, m, s));
-            }
+            lblTimer.setText(String.format("%02d:%02d:%02d", h, m, s));
         });
     }
 
     @FXML
     private void startFocus() {
-        if (countdownSeconds <= 0) {
-            return;
-        }
-        if (timerService != null && !timerService.isShutdown()) {
-            return;
-        }
+        if (countdownSeconds <= 0) return;
+        if (timerService != null && !timerService.isShutdown()) return;
 
-        if (boxAddTime != null) {
-            boxAddTime.setVisible(false);
-            boxAddTime.setManaged(false);
-        }
+        boxAddTime.setVisible(false);
+        boxAddTime.setManaged(false);
 
         timerService = Executors.newSingleThreadScheduledExecutor();
         timerService.scheduleAtFixedRate(() -> {
@@ -192,6 +148,8 @@ public class DeepFocusController implements Initializable, Controllable {
                 stopFocus();
             }
         }, 1, 1, TimeUnit.SECONDS);
+        
+        // Activar bloqueo estricto si estuviera implementado en el dominio
     }
 
     @FXML
@@ -200,17 +158,13 @@ public class DeepFocusController implements Initializable, Controllable {
             timerService.shutdownNow();
         }
         Platform.runLater(() -> {
-            if (boxAddTime != null) {
-                boxAddTime.setVisible(true);
-                boxAddTime.setManaged(true);
-            }
+            boxAddTime.setVisible(true);
+            boxAddTime.setManaged(true);
         });
     }
 
     @FXML
     private void initiateLockdown() {
-        if (datePicker == null || comboHH == null || comboMM == null) return;
-        
         LocalDate targetDate = datePicker.getValue();
         int h = Integer.parseInt(comboHH.getValue());
         int m = Integer.parseInt(comboMM.getValue());
@@ -235,7 +189,8 @@ public class DeepFocusController implements Initializable, Controllable {
         alert.showAndWait().ifPresent(res -> {
             if (res == ButtonType.OK) {
                 stopFocus();
+                // Notificar salida
             }
         });
     }
-}*/
+}

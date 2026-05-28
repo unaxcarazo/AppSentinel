@@ -25,13 +25,24 @@ public class MainController {
 
     private AppContext ctx;
 
-    @FXML
-    private Button btnDeepFocus;
+    @FXML private javafx.scene.layout.HBox mainRoot;
+    @FXML private javafx.scene.layout.VBox sidebar;
+
+    @FXML private Button btnDashboard;
+    @FXML private Button btnAppBlocker;
+    @FXML private Button btnPerformance;
+    @FXML private Button btnHistory;
 
     @FXML
     public void initialize() {
         if (contenedor == null) {
             throw new IllegalStateException("Error crítico: fx:id=\"contenedor\" no fue inyectado correctamente. Verificar main.fxml.");
+        }
+        
+        if (sidebar != null && mainRoot != null) {
+            sidebar.prefWidthProperty().bind(mainRoot.widthProperty().multiply(0.16));
+            sidebar.minWidthProperty().bind(mainRoot.widthProperty().multiply(0.16));
+            sidebar.maxWidthProperty().bind(mainRoot.widthProperty().multiply(0.16));
         }
     }
 
@@ -54,42 +65,38 @@ public class MainController {
     // =========================================================================
     @FXML
     public void onDashboard() {
+        setActiveButton(btnDashboard);
         cargarVista("Dashboard");
     }
 
     @FXML
     public void onAppBlocker() {
+        setActiveButton(btnAppBlocker);
         cargarVista("AppBlocker");
     }
 
     @FXML
     public void onPerformance() {
+        setActiveButton(btnPerformance);
         cargarVista("Performance");
     }
 
     @FXML
     public void onHistory() {
+        setActiveButton(btnHistory);
         cargarVista("UsageHistory");
     }
 
-    @FXML
-    public void onDeepFocus() {
-        try {
-            // 1. Cargamos el archivo FXML de Deep Focus
-            javafx.fxml.FXMLLoader loader = new javafx.fxml.FXMLLoader(getClass().getResource("/fxml/deep_focus.fxml"));
-            javafx.scene.Parent deepFocusView = loader.load();
+    private void setActiveButton(Button activeBtn) {
+        if (btnDashboard != null) btnDashboard.getStyleClass().remove("nav-item-active");
+        if (btnAppBlocker != null) btnAppBlocker.getStyleClass().remove("nav-item-active");
+        if (btnPerformance != null) btnPerformance.getStyleClass().remove("nav-item-active");
+        if (btnHistory != null) btnHistory.getStyleClass().remove("nav-item-active");
 
-            // 2. Limpiamos el panel de la derecha (donde están los logs de actividad)
-            contenedor.getChildren().clear();
-
-            // 3. Inyectamos la nueva vista de Deep Focus en el centro
-            contenedor.getChildren().add(deepFocusView);
-
-        } catch (Exception e) {
-            System.err.println("Error al cargar la pantalla de Deep Focus: " + e.getMessage());
-            e.printStackTrace();
+        if (activeBtn != null && !activeBtn.getStyleClass().contains("nav-item-active")) {
+            activeBtn.getStyleClass().add("nav-item-active");
         }
-    } // Ajustar si es vista o acción directa
+    }
 
     // =========================================================================
     // DESPACHADOR DINÁMICO DE PANTALLAS (MÉTODO NÚCLEO POLIMÓRFICO)

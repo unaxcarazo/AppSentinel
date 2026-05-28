@@ -437,10 +437,16 @@ public class DashboardController implements Initializable, Controllable {
                 continue;
             }
 
-            String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
-            if ("PRODUCTIVO".equals(cat)) {
+            // 1. LIMPIEZA DE TEXTO UNIFICADA (Evita fallos de mayúsculas/tildes)
+            String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase()
+                    .replace("Á", "A").replace("É", "E")
+                    .replace("Í", "I").replace("Ó", "O")
+                    .replace("Ú", "U") : "";
+
+            // 2. FILTRADO SEGURO (Asegúrate de usar los mismos nombres que en tus tarjetas de arriba)
+            if ("PRODUCTIVO".equals(cat) || "TRABAJO".equals(cat)) {
                 minutosProductivoPorHora[hora] += minutes;
-            } else if ("DISTRACCION".equals(cat) || "DISTRACCIÓN".equals(cat) || cat.contains("DISTRA")) {
+            } else if ("DISTRACCION".equals(cat) || cat.contains("DISTRA")) {
                 minutosDistraccionPorHora[hora] += minutes;
             }
         }
@@ -450,7 +456,8 @@ public class DashboardController implements Initializable, Controllable {
             return;
         }
 
-        // 🚀 CORRECCIÓN DEL GRÁFICO: Crece de forma limpia y expansiva hasta la hora actual
+        // 3. CONTROL DE HORA ACTUAL (¡Ojo! Solo aplicable si los registros son de HOY)
+        // Si implementas histórico de días, añade una condición aquí para comprobar si es hoy.
         int horaActual = java.time.LocalTime.now().getHour();
         if (maxHora < horaActual) {
             maxHora = horaActual;
@@ -485,14 +492,11 @@ public class DashboardController implements Initializable, Controllable {
             barChartActivity.getData().clear();
 
             if (barChartActivity.getXAxis() instanceof javafx.scene.chart.CategoryAxis) {
-                javafx.scene.chart.CategoryAxis xAxis
-                        = (javafx.scene.chart.CategoryAxis) barChartActivity.getXAxis();
-                xAxis.setAutoRanging(true);
+                ((javafx.scene.chart.CategoryAxis) barChartActivity.getXAxis()).setAutoRanging(true);
             }
 
             if (barChartActivity.getYAxis() instanceof javafx.scene.chart.NumberAxis) {
-                javafx.scene.chart.NumberAxis yAxis
-                        = (javafx.scene.chart.NumberAxis) barChartActivity.getYAxis();
+                javafx.scene.chart.NumberAxis yAxis = (javafx.scene.chart.NumberAxis) barChartActivity.getYAxis();
                 yAxis.setAutoRanging(false);
                 yAxis.setLowerBound(0);
                 yAxis.setUpperBound(topeY);

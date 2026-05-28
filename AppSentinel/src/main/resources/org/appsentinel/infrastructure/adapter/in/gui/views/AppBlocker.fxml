@@ -4,11 +4,11 @@
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
-<?import javafx.scene.text.Font?>
 
 <AnchorPane fx:id="rootPane" prefHeight="550.0" prefWidth="750.0" 
             style="-fx-background-color: #0c0c0e;" 
@@ -21,7 +21,7 @@
                 <Insets bottom="20.0" left="25.0" right="25.0" top="20.0" />
             </padding>
             <children>
-           
+
                 <HBox alignment="CENTER_LEFT">
                     <children>
                         <VBox spacing="4.0">
@@ -30,16 +30,24 @@
                                 <Label text="Manage allowed and restricted applications." style="-fx-text-fill: #6c6c73; -fx-font-family: 'system'; -fx-font-size: 12px;" />
                             </children>
                         </VBox>
-                 
+
                         <Region HBox.hgrow="ALWAYS" />
-                 
-                        <Button fx:id="btnAnadir" mnemonicParsing="false" onAction="#handleAnadirApp" prefHeight="32.0" style="-fx-background-color: #121214; -fx-text-fill: #00e5ff; -fx-border-color: #00e5ff; -fx-border-width: 1px; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-font-family: 'monospace'; -fx-font-weight: bold; -fx-cursor: hand; -fx-padding: 0 15 0 15;" text="+ ADD NEW APP" />
+
+                        <HBox alignment="CENTER_RIGHT" spacing="8.0">
+                            <children>
+                                <TextField fx:id="txtNuevaApp" prefHeight="32.0" prefWidth="200.0" promptText="Buscar apps..."
+                                    style="-fx-background-color: #121214; -fx-text-fill: #ffffff; -fx-border-color: #333333; -fx-border-width: 1px; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-font-family: 'monospace'; -fx-font-size: 11px; -fx-prompt-text-fill: #6c6c73;" />
+                                <Button fx:id="btnAnadir" mnemonicParsing="false" onAction="#handleAnadirApp" prefHeight="32.0" 
+                                    style="-fx-background-color: #121214; -fx-text-fill: #00e5ff; -fx-border-color: #00e5ff; -fx-border-width: 1px; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-font-family: 'monospace'; -fx-font-weight: bold; -fx-cursor: hand; -fx-padding: 0 15 0 15;" 
+                                    text="+ ADD NEW APP" />
+                            </children>
+                        </HBox>
                     </children>
                 </HBox>
 
                 <HBox alignment="CENTER" spacing="12.0" VBox.vgrow="ALWAYS">
                     <children>
-                 
+
                         <VBox prefWidth="300.0" spacing="12.0" style="-fx-background-color: #121214; -fx-border-color: #00e5ff; -fx-border-width: 1px; -fx-border-radius: 8px; -fx-background-radius: 8px;" HBox.hgrow="ALWAYS">
                             <padding>
                                 <Insets bottom="15.0" left="15.0" right="15.0" top="15.0" />
@@ -66,7 +74,7 @@
                                 <ListView fx:id="listaOcio" style="-fx-background-color: transparent; -fx-control-inner-background: #121214; -fx-background-radius: 6px; -fx-padding: 2px;" VBox.vgrow="ALWAYS" />
                             </children>
                         </VBox>
-                 
+
                     </children>
                 </HBox>
             </children>

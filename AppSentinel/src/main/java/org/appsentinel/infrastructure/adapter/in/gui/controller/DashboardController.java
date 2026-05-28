@@ -36,11 +36,11 @@ import org.appsentinel.infrastructure.bootstrap.AppContext;
  */
 public class DashboardController implements Initializable, Controllable {
 
-    private static final double LIMITE_PRODUCTIVO_SEG = 5 * 3600; // 5 horas en segundos
-    private static final double LIMITE_DISTRACCION_SEG = 1 * 3600; // 1 hora en segundos
+    private static final double LIMITE_PRODUCTIVO_SEG = 5 * 3600;
+    private static final double LIMITE_DISTRACCION_SEG = 1 * 3600;
 
     private volatile long ultimaActualizacionUi = 0;
-    private static final long MIN_MS_ENTRE_ACTUALIZACIONES = 2000; // 2 segundos
+    private static final long MIN_MS_ENTRE_ACTUALIZACIONES = 2000;
 
     private ScheduledExecutorService uiScheduler;
     private RegistroRepositoryPort repo;
@@ -120,6 +120,21 @@ public class DashboardController implements Initializable, Controllable {
                     }
                 }
             }
+            if (scoreFill != null && scoreFill.getParent() instanceof Region) {
+                Region contenedor = (Region) scoreFill.getParent();
+                contenedor.heightProperty().addListener((obs, oldH, newH) -> {
+                    if (newH.doubleValue() > 0) {
+                        String textoActual = lblScorePercent.getText().replace("%", "").trim();
+                        try {
+                            int pct = Integer.parseInt(textoActual);
+                            double factor = pct / 100.0;
+                            scoreFill.setPrefHeight(newH.doubleValue() * factor);
+                            scoreFill.setMaxHeight(newH.doubleValue() * factor);
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                });
+            }
         });
 
         this.uiScheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
@@ -153,7 +168,6 @@ public class DashboardController implements Initializable, Controllable {
         recargarDatosDesdeBd();
     }
 
-   
     private String sanitizarTextoLargo(String texto, int maxCaracteres) {
         if (texto == null) {
             return "";
@@ -172,10 +186,7 @@ public class DashboardController implements Initializable, Controllable {
 
         int pos = 1;
         for (Registro app : topWorkApps) {
-            double progreso = (double) app.getDuracionSeg() / LIMITE_PRODUCTIVO_SEG;
-            if (progreso > 1.0) {
-                progreso = 1.0;
-            }
+            double progreso = Math.min((double) app.getDuracionSeg() / LIMITE_PRODUCTIVO_SEG, 1.0);
 
             ProgressBar bar = new ProgressBar(progreso);
             bar.setMaxWidth(Double.MAX_VALUE);
@@ -236,12 +247,7 @@ public class DashboardController implements Initializable, Controllable {
             ProgressBar bar = new ProgressBar(progreso);
             bar.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(bar, Priority.ALWAYS);
-
-            if (excedido) {
-                bar.getStyleClass().add("progress-bar-danger");
-            } else {
-                bar.getStyleClass().add("progress-distraction-thin");
-            }
+            bar.getStyleClass().add(excedido ? "progress-bar-danger" : "progress-distraction-thin");
 
             HBox row = new HBox();
             row.getStyleClass().add("ranking-row");
@@ -303,10 +309,9 @@ public class DashboardController implements Initializable, Controllable {
                 continue;
             }
             String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
-
             if ("PRODUCTIVO".equals(cat)) {
                 totalSegundosProductivo += r.getDuracionSeg();
-            } else if ("DISTRACCION".equals(cat)) {
+            } else if ("DISTRACCION".equals(cat) || "DISTRACCIÓN".equals(cat) || cat.contains("DISTRA")) {
                 totalSegundosDistraccion += r.getDuracionSeg();
             }
         }
@@ -319,12 +324,12 @@ public class DashboardController implements Initializable, Controllable {
         lblCount.setText(String.valueOf(registros.size()));
 
         if (progressWorkCard != null) {
-            double progTrabajo = (double) totalSegundosProductivo / LIMITE_PRODUCTIVO_SEG;
-            progressWorkCard.setProgress(Math.max(0.0, Math.min(1.0, progTrabajo)));
+            progressWorkCard.setProgress(Math.max(0.0, Math.min(1.0,
+                    (double) totalSegundosProductivo / LIMITE_PRODUCTIVO_SEG)));
         }
         if (progressDistractionCard != null) {
-            double progDistraccion = (double) totalSegundosDistraccion / LIMITE_DISTRACCION_SEG;
-            progressDistractionCard.setProgress(Math.max(0.0, Math.min(1.0, progDistraccion)));
+            progressDistractionCard.setProgress(Math.max(0.0, Math.min(1.0,
+                    (double) totalSegundosDistraccion / LIMITE_DISTRACCION_SEG)));
         }
     }
 
@@ -344,42 +349,16 @@ public class DashboardController implements Initializable, Controllable {
         } else if (fechaConsultada.equals(LocalDate.now().minusDays(1))) {
             lblFecha.setText("Ayer");
         } else {
-            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd MMM, yyyy");
+            java.time.format.DateTimeFormatter formatter
+                    = java.time.format.DateTimeFormatter.ofPattern("dd MMM, yyyy");
             lblFecha.setText(fechaConsultada.format(formatter));
         }
 
         if (repo != null && usuarioActual != null) {
             List<Registro> registrosDelDia = repo.findByUsuarioAndFecha(usuarioActual, fechaConsultada);
 
-            List<Registro> topTrabajo = registrosDelDia.stream()
-                    .filter(r -> r != null && "PRODUCTIVO".equalsIgnoreCase(r.getCategoria() != null ? r.getCategoria().trim() : ""))
-                    .collect(Collectors.groupingBy(Registro::getNombreActividad, Collectors.summingLong(Registro::getDuracionSeg)))
-                    .entrySet().stream()
-                    .map(entry -> {
-                        Registro reg = new Registro();
-                        reg.setNombreActividad(entry.getKey());
-                        reg.setDuracionSeg(entry.getValue());
-                        reg.setCategoria("PRODUCTIVO");
-                        return reg;
-                    })
-                    .sorted((r1, r2) -> Long.compare(r2.getDuracionSeg(), r1.getDuracionSeg()))
-                    .limit(5)
-                    .collect(Collectors.toList());
-
-            List<Registro> topDistracciones = registrosDelDia.stream()
-                    .filter(r -> r != null && "DISTRACCION".equalsIgnoreCase(r.getCategoria() != null ? r.getCategoria().trim() : ""))
-                    .collect(Collectors.groupingBy(Registro::getNombreActividad, Collectors.summingLong(Registro::getDuracionSeg)))
-                    .entrySet().stream()
-                    .map(entry -> {
-                        Registro reg = new Registro();
-                        reg.setNombreActividad(entry.getKey());
-                        reg.setDuracionSeg(entry.getValue());
-                        reg.setCategoria("DISTRACCION");
-                        return reg;
-                    })
-                    .sorted((r1, r2) -> Long.compare(r2.getDuracionSeg(), r1.getDuracionSeg()))
-                    .limit(5)
-                    .collect(Collectors.toList());
+            List<Registro> topTrabajo = agruparYOrdenar(registrosDelDia, "PRODUCTIVO");
+            List<Registro> topDistracciones = agruparYOrdenar(registrosDelDia, "DISTRACCION");
 
             actualizarCards(registrosDelDia);
             actualizarRankingTrabajo(topTrabajo);
@@ -387,6 +366,40 @@ public class DashboardController implements Initializable, Controllable {
             actualizarGraficoReal(registrosDelDia);
             updateProductivityScore(registrosDelDia);
         }
+    }
+
+    /**
+     * Agrupa registros por nombre de actividad, suma duraciones y devuelve el
+     * top 5 ordenado de mayor a menor para la categoría indicada.
+     */
+    private List<Registro> agruparYOrdenar(List<Registro> registros, String categoria) {
+        return registros.stream()
+                .filter(r -> {
+                    if (r == null || r.getCategoria() == null) {
+                        return false;
+                    }
+                    String cat = r.getCategoria().trim().toUpperCase();
+                    if ("PRODUCTIVO".equalsIgnoreCase(categoria)) {
+                        return "PRODUCTIVO".equals(cat);
+                    } else {
+                        // 🚀 BLINDAJE: Tolerancia total a tildes (DISTRACCIÓN o DISTRACCION)
+                        return "DISTRACCION".equals(cat) || "DISTRACCIÓN".equals(cat) || cat.contains("DISTRA");
+                    }
+                })
+                .collect(Collectors.groupingBy(
+                        Registro::getNombreActividad,
+                        Collectors.summingLong(Registro::getDuracionSeg)))
+                .entrySet().stream()
+                .map(entry -> {
+                    Registro reg = new Registro();
+                    reg.setNombreActividad(entry.getKey());
+                    reg.setDuracionSeg(entry.getValue());
+                    reg.setCategoria(categoria);
+                    return reg;
+                })
+                .sorted((r1, r2) -> Long.compare(r2.getDuracionSeg(), r1.getDuracionSeg()))
+                .limit(5)
+                .collect(Collectors.toList());
     }
 
     private void actualizarGraficoReal(List<Registro> registros) {
@@ -399,7 +412,6 @@ public class DashboardController implements Initializable, Controllable {
         double[] minutosDistraccionPorHora = new double[24];
         double maxMinutos = 0;
 
-        // Inicializamos los extremos para encontrar el rango de uso real
         int minHora = 24;
         int maxHora = -1;
 
@@ -413,7 +425,6 @@ public class DashboardController implements Initializable, Controllable {
                 continue;
             }
 
-            // Guardamos dinámicamente cuál es la primera y última hora con datos
             if (hora < minHora) {
                 minHora = hora;
             }
@@ -421,24 +432,28 @@ public class DashboardController implements Initializable, Controllable {
                 maxHora = hora;
             }
 
-            double minutos = r.getDuracionSeg() / 60.0;
-            if (minutos <= 0) {
+            double minutes = r.getDuracionSeg() / 60.0;
+            if (minutes <= 0) {
                 continue;
             }
 
             String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
-
             if ("PRODUCTIVO".equals(cat)) {
-                minutosProductivoPorHora[hora] += minutos;
-            } else if ("DISTRACCION".equals(cat)) {
-                minutosDistraccionPorHora[hora] += minutos;
+                minutosProductivoPorHora[hora] += minutes;
+            } else if ("DISTRACCION".equals(cat) || "DISTRACCIÓN".equals(cat) || cat.contains("DISTRA")) {
+                minutosDistraccionPorHora[hora] += minutes;
             }
         }
 
-        // Si no se procesaron horas válidas, limpiamos y salimos
         if (maxHora == -1 || minHora == 24) {
             Platform.runLater(() -> barChartActivity.getData().clear());
             return;
+        }
+
+        // 🚀 CORRECCIÓN DEL GRÁFICO: Crece de forma limpia y expansiva hasta la hora actual
+        int horaActual = java.time.LocalTime.now().getHour();
+        if (maxHora < horaActual) {
+            maxHora = horaActual;
         }
 
         XYChart.Series<String, Number> seriesWork = new XYChart.Series<>();
@@ -447,7 +462,6 @@ public class DashboardController implements Initializable, Controllable {
         XYChart.Series<String, Number> seriesDist = new XYChart.Series<>();
         seriesDist.setName("Distracción");
 
-        // Construimos los datos del gráfico acotados estrictamente entre [minHora y maxHora]
         for (int h = minHora; h <= maxHora; h++) {
             double tWork = minutosProductivoPorHora[h];
             double tDist = minutosDistraccionPorHora[h];
@@ -465,26 +479,20 @@ public class DashboardController implements Initializable, Controllable {
         }
 
         final double topeY = (maxMinutos > 0) ? Math.ceil(maxMinutos / 30.0) * 30.0 : 30.0;
-        final int horaInicio = minHora;
-        final int horaTope = maxHora;
 
         Platform.runLater(() -> {
             barChartActivity.setAnimated(false);
             barChartActivity.getData().clear();
 
             if (barChartActivity.getXAxis() instanceof javafx.scene.chart.CategoryAxis) {
-                javafx.scene.chart.CategoryAxis xAxis = (javafx.scene.chart.CategoryAxis) barChartActivity.getXAxis();
-                javafx.collections.ObservableList<String> categoriasDinamicas = javafx.collections.FXCollections.observableArrayList();
-
-                // El eje X ahora solo renderiza las horas que tienen registros reales
-                for (int h = horaInicio; h <= horaTope; h++) {
-                    categoriasDinamicas.add(String.format("%02d:00", h));
-                }
-                xAxis.setCategories(categoriasDinamicas);
+                javafx.scene.chart.CategoryAxis xAxis
+                        = (javafx.scene.chart.CategoryAxis) barChartActivity.getXAxis();
+                xAxis.setAutoRanging(true);
             }
 
             if (barChartActivity.getYAxis() instanceof javafx.scene.chart.NumberAxis) {
-                javafx.scene.chart.NumberAxis yAxis = (javafx.scene.chart.NumberAxis) barChartActivity.getYAxis();
+                javafx.scene.chart.NumberAxis yAxis
+                        = (javafx.scene.chart.NumberAxis) barChartActivity.getYAxis();
                 yAxis.setAutoRanging(false);
                 yAxis.setLowerBound(0);
                 yAxis.setUpperBound(topeY);
@@ -501,35 +509,42 @@ public class DashboardController implements Initializable, Controllable {
         Platform.runLater(() -> {
             lblScorePercent.setText(porcentajeFinal + "%");
 
-            String mensajeEstado;
-            String colorHex;
-
-            if (porcentajeFinal >= 80) {
-                mensajeEstado = "EXCELENT WORK!";
-                colorHex = "#00FF7F";
-            } else if (porcentajeFinal >= 60) {
-                mensajeEstado = "GOOD JOB! KEEP IT UP.";
-                colorHex = "#FFA500";
-            } else if (porcentajeFinal >= 40) {
-                mensajeEstado = "YOU CAN DO BETTER.";
-                colorHex = "#FFA500";
-            } else if (porcentajeFinal > 0) {
-                mensajeEstado = "TOO MANY DISTRACTIONS!";
-                colorHex = "#F00C26";
-            } else {
-                mensajeEstado = "NO DATA YET.";
-                colorHex = "#888888";
-            }
-
             if (lblScoreMessage != null) {
-                lblScoreMessage.setText(mensajeEstado);
-                lblScoreMessage.setStyle("-fx-text-fill: " + colorHex + "; -fx-font-weight: bold;");
+                lblScoreMessage.getStyleClass().removeAll(
+                        "score-msg-excellent", "score-msg-good",
+                        "score-msg-warning", "score-msg-danger", "score-msg-nodata");
+
+                if (porcentajeFinal >= 80) {
+                    lblScoreMessage.setText("EXCELENT WORK!");
+                    lblScoreMessage.getStyleClass().add("score-msg-excellent");
+                } else if (porcentajeFinal >= 60) {
+                    lblScoreMessage.setText("GOOD JOB! KEEP IT UP.");
+                    lblScoreMessage.getStyleClass().add("score-msg-good");
+                } else if (porcentajeFinal >= 40) {
+                    lblScoreMessage.setText("YOU CAN DO BETTER.");
+                    lblScoreMessage.getStyleClass().add("score-msg-warning");
+                } else if (porcentajeFinal > 0) {
+                    lblScoreMessage.setText("TOO MANY DISTRACTIONS!");
+                    lblScoreMessage.getStyleClass().add("score-msg-danger");
+                } else {
+                    lblScoreMessage.setText("NO DATA YET.");
+                    lblScoreMessage.getStyleClass().add("score-msg-nodata");
+                }
             }
 
-            double maxHeight = 160.0;
             double factorProgreso = porcentajeFinal / 100.0;
-            if (scoreFill != null) {
-                scoreFill.setPrefHeight(maxHeight * factorProgreso);
+            if (scoreFill != null && scoreFill.getParent() instanceof Region) {
+                Region contenedor = (Region) scoreFill.getParent();
+                double alturaReal = contenedor.getHeight() > 0 ? contenedor.getHeight() : 160.0;
+                scoreFill.setPrefHeight(alturaReal * factorProgreso);
+                scoreFill.setMaxHeight(alturaReal * factorProgreso);
+
+                scoreFill.getStyleClass().removeAll("score-fill-color", "score-fill-full");
+                if (porcentajeFinal >= 98) {
+                    scoreFill.getStyleClass().add("score-fill-full");
+                } else {
+                    scoreFill.getStyleClass().add("score-fill-color");
+                }
             }
         });
     }
@@ -546,25 +561,20 @@ public class DashboardController implements Initializable, Controllable {
             if (r == null) {
                 continue;
             }
-
             String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
-
             if ("PRODUCTIVO".equals(cat)) {
                 segundosProductivo += r.getDuracionSeg();
-            } else if ("DISTRACCION".equals(cat)) {
+            } else if ("DISTRACCION".equals(cat) || "DISTRACCIÓN".equals(cat) || cat.contains("DISTRA")) {
                 segundosDistraccion += r.getDuracionSeg();
             }
         }
 
-        double minutesProductivo = segundosProductivo / 60.0;
-        double minutesDistraccion = segundosDistraccion / 60.0;
-        double minutesTotales = minutesProductivo + minutesDistraccion;
-
+        double minutesTotales = (segundosProductivo + segundosDistraccion) / 60.0;
         if (minutesTotales <= 0) {
             return 0;
         }
 
-        double resultado = (minutesProductivo * 100.0) / minutesTotales;
+        double resultado = (segundosProductivo / 60.0 * 100.0) / minutesTotales;
         return Math.max(0, Math.min(100, (int) Math.round(resultado)));
     }
 
@@ -577,13 +587,9 @@ public class DashboardController implements Initializable, Controllable {
         if (ahora - ultimaActualizacionUi < MIN_MS_ENTRE_ACTUALIZACIONES) {
             return;
         }
-        ultimaActualizacionUi = telemetryAhora();
+        ultimaActualizacionUi = System.currentTimeMillis();
 
         Platform.runLater(this::recargarDatosDesdeBd);
-    }
-
-    private long telemetryAhora() {
-        return System.currentTimeMillis();
     }
 
     private void recargarDatosDesdeBd() {
@@ -594,21 +600,12 @@ public class DashboardController implements Initializable, Controllable {
             List<Registro> topDistracciones = repo.obtenerTopDistracciones(usuarioActual, 5);
             List<Registro> actividad = repo.obtenerActividadHoy(usuarioActual);
 
+            // 🚀 SOLUCIÓN EN TIEMPO REAL: Fallbacks activados para AMBAS categorías por igual
             if ((topTrabajo == null || topTrabajo.isEmpty()) && actividad != null && !actividad.isEmpty()) {
-                topTrabajo = actividad.stream()
-                        .filter(r -> r != null && "PRODUCTIVO".equalsIgnoreCase(r.getCategoria() != null ? r.getCategoria().trim() : ""))
-                        .collect(Collectors.groupingBy(Registro::getNombreActividad, Collectors.summingLong(Registro::getDuracionSeg)))
-                        .entrySet().stream()
-                        .map(entry -> {
-                            Registro reg = new Registro();
-                            reg.setNombreActividad(entry.getKey());
-                            reg.setDuracionSeg(entry.getValue());
-                            reg.setCategoria("PRODUCTIVO");
-                            return reg;
-                        })
-                        .sorted((r1, r2) -> Long.compare(r2.getDuracionSeg(), r1.getDuracionSeg()))
-                        .limit(5)
-                        .collect(Collectors.toList());
+                topTrabajo = agruparYOrdenar(actividad, "PRODUCTIVO");
+            }
+            if ((topDistracciones == null || topDistracciones.isEmpty()) && actividad != null && !actividad.isEmpty()) {
+                topDistracciones = agruparYOrdenar(actividad, "DISTRACCION");
             }
 
             actualizarCards(actividad);

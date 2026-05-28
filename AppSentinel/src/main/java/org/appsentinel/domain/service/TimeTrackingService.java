@@ -20,6 +20,7 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * TimeTrackingService: Orquestador principal del seguimiento de actividad.
@@ -165,6 +166,26 @@ public void reportarEventoNavegador(String url, String titulo, int tabId) {
     );
 }
 
+ // -------------------------------------------------------------------------
+    // NUEVO: Obtener dominios web detectados (para AppBlockerController modal)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Devuelve los dominios web únicos detectados en la sesión actual.
+     *
+     * Extrae las claves que comienzan con "WEB|" de las sesiones de existencia,
+     * eliminando el prefijo para obtener solo el dominio.
+     *
+     * @return Set de dominios únicos (ej: "youtube.com", "github.com")
+     */
+    public Set<String> obtenerDominiosDetectados() {
+        synchronized (lockLimpieza) {
+            return sesiones.keySet().stream()
+                .filter(k -> k.startsWith("WEB|"))
+                .map(k -> k.substring(4))
+                .collect(Collectors.toSet());
+        }
+    }
 
 
 

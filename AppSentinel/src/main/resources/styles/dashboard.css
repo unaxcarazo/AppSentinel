@@ -23,8 +23,7 @@
 }
 
 .date-text, .date-icon, .kpi-stat-positive{
-   -fx-text-fill: #FFFFFF; 
-        
+    -fx-text-fill: #FFFFFF;
 }
 
 /* ----------- TEXTOS Y CABECERAS ----------- */
@@ -79,7 +78,6 @@
 }
 
 /* ----------- BARRAS DE PROGRESO (KPI y Ranking) ----------- */
-/* Altura unificada para que sean visibles */
 .progress-work-thin,
 .progress-distraction-thin,
 .progress-bar-danger {
@@ -88,7 +86,6 @@
     -fx-max-height: 10px;
 }
 
-/* El fondo de la barra (el carril vacío) */
 .progress-work-thin .track,
 .progress-distraction-thin .track,
 .progress-bar-danger .track {
@@ -96,18 +93,18 @@
     -fx-background-radius: 10;
 }
 
-/* Colores de relleno (La parte que progresa) */
 .work-progress .bar, .progress-work-thin .bar {
-    -fx-background-color: -color-cian;
+    -fx-background-color: #00f2ff;
     -fx-background-radius: 10;
+    -fx-effect: dropshadow(gaussian, #00f2ff, 5, 0, 0, 0);
 }
 
 .distraction-progress .bar, .progress-distraction-thin .bar {
-    -fx-background-color: -color-naranja;
+    -fx-background-color: #ff5c00;
     -fx-background-radius: 10;
+    -fx-effect: dropshadow(gaussian, #ff5c00, 5, 0, 0, 0);
 }
 
-/* Clase de Peligro (Roja) */
 .progress-bar-danger .bar {
     -fx-background-color: #ff0044;
     -fx-background-radius: 10;
@@ -148,7 +145,7 @@
     -fx-alignment: center;
 }
 
-/* ----------- GRÁFICOS Y SCORE (TELÉFONO) ----------- */
+/* ----------- GRÁFICOS ----------- */
 .cyber-chart {
     -fx-background-color: transparent;
 }
@@ -156,7 +153,8 @@
     -fx-tick-label-fill: -color-text-muted;
     -fx-axis-label-fill: -color-text-muted;
 }
-.cyber-chart .chart-vertical-grid-lines, .cyber-chart .chart-horizontal-grid-lines {
+.cyber-chart .chart-vertical-grid-lines,
+.cyber-chart .chart-horizontal-grid-lines {
     -fx-stroke: -color-border;
 }
 .cyber-chart .chart-plot-background {
@@ -169,6 +167,7 @@
     -fx-bar-fill: -color-naranja;
 }
 
+/* ----------- SCORE (TELÉFONO) ----------- */
 .phone-frame {
     -fx-border-color: -color-border;
     -fx-border-width: 4;
@@ -181,43 +180,56 @@
     -fx-background-color: -color-bg-card;
     -fx-background-radius: 20;
 }
+
+/* Relleno normal: esquinas inferiores redondeadas */
 .score-fill-color {
     -fx-background-color: linear-gradient(to top, -color-cian, -color-verde-status);
     -fx-background-radius: 0 0 20 20;
 }
+
+/* Relleno al 100%: todas las esquinas redondeadas */
+.score-fill-full {
+    -fx-background-color: linear-gradient(to top, -color-cian, -color-verde-status);
+    -fx-background-radius: 20 20 20 20;
+}
+
 .score-text-large {
     -fx-text-fill: -color-text-main;
     -fx-font-size: 30px;
     -fx-font-weight: bold;
 }
+
+/* ----------- ESTADOS DEL MENSAJE DE SCORE ----------- */
+/* Movidos desde el controlador Java — cada estado tiene su propia clase */
+
+.score-msg-excellent {
+    -fx-text-fill: #00FF7F;
+    -fx-font-weight: bold;
+}
+
+.score-msg-good {
+    -fx-text-fill: #FFA500;
+    -fx-font-weight: bold;
+}
+
+.score-msg-warning {
+    -fx-text-fill: #FFA500;
+    -fx-font-weight: bold;
+}
+
+.score-msg-danger {
+    -fx-text-fill: #F00C26;
+    -fx-font-weight: bold;
+}
+
+.score-msg-nodata {
+    -fx-text-fill: #888888;
+    -fx-font-weight: bold;
+}
+
+/* Alias semántico existente (se mantiene por compatibilidad) */
 .status-text-excellent {
     -fx-text-fill: -color-verde-status;
     -fx-font-size: 12px;
     -fx-font-weight: bold;
-}
-
-/* ----------- Barra de trabajo (Cian) ----------- */
-.progress-work-thin .bar {
-    -fx-background-color: #00f2ff;
-    -fx-background-radius: 10;
-    -fx-effect: dropshadow(gaussian, #00f2ff, 5, 0, 0, 0);
-}
-
-/* ----------- Barra de distracciones (Naranja) ----------- */
-.progress-distraction-thin .bar {
-    -fx-background-color: #ff5c00;
-    -fx-background-radius: 10;
-    -fx-effect: dropshadow(gaussian, #ff5c00, 5, 0, 0, 0);
-}
-
-/* Clase para cuando se supera el límite de distracción */
-.progress-bar-danger .bar {
-    -fx-background-color: #ff0044; /* Un rojo intenso/fucsia ciberpunk */
-    -fx-background-radius: 5px;
-    -fx-effect: dropshadow(gaussian, #ff0044, 8, 0, 0, 0); /* Brillo rojo */
-}
-
-/* Opcional: que el fondo de la barra de peligro sea un poco más oscuro */
-.progress-bar-danger .track {
-    -fx-background-color: #2a000a;
 }

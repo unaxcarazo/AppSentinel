@@ -41,7 +41,7 @@
                         <Region HBox.hgrow="ALWAYS"/>
                         <Label fx:id="lblCpuLoad" text="0%" minWidth="-Infinity" style="-fx-text-fill: #00E5FF; -fx-font-size: 28px; -fx-font-weight: bold;"/>
                     </HBox>
-                    <ProgressBar fx:id="progressCpu" progress="0.0" maxWidth="Infinity" prefHeight="10" styleClass="progress-bar-cyan"/>
+                    <ProgressBar fx:id="progressCpu" progress="0.0" maxWidth="Infinity" prefHeight="10" styleClass="progress-bar, progress-bar-cyan"/>
                     <HBox>
                         <Label fx:id="lblCpuFreq" text="0.0 GHz" minWidth="-Infinity" style="-fx-text-fill: #888; -fx-font-size: 11px;"/>
                         <Region HBox.hgrow="ALWAYS"/>
@@ -58,7 +58,7 @@
                         <Region HBox.hgrow="ALWAYS"/>
                         <Label fx:id="lblRamUsage" text="0%" minWidth="-Infinity" style="-fx-text-fill: #FF3D00; -fx-font-size: 28px; -fx-font-weight: bold;"/>
                     </HBox>
-                    <ProgressBar fx:id="progressRam" progress="0.0" maxWidth="Infinity" prefHeight="10" styleClass="progress-bar-orange"/>
+                    <ProgressBar fx:id="progressRam" progress="0.0" maxWidth="Infinity" prefHeight="10" styleClass="progress-bar, progress-bar-orange"/>
                     <HBox>
                         <Label fx:id="lblRamSub" text="0.0 GB In Use" minWidth="-Infinity" style="-fx-text-fill: #888; -fx-font-size: 11px;"/>
                         <Region HBox.hgrow="ALWAYS"/>
@@ -97,7 +97,7 @@
                     <Region HBox.hgrow="ALWAYS"/>
                     <TextField fx:id="txtSearchProcess" promptText="Search process..." styleClass="search-field" prefWidth="250"/>
                 </HBox>
-                <TableView fx:id="tableProcesses" VBox.vgrow="ALWAYS" styleClass="table-view" minHeight="400">
+                <TableView fx:id="tablaProcesos" VBox.vgrow="ALWAYS" styleClass="table-view" minHeight="400">
                     <columns>
                         <TableColumn fx:id="colName" prefWidth="250" text="APP NAME" />
                         <TableColumn fx:id="colCategory" prefWidth="120" text="TYPE" />

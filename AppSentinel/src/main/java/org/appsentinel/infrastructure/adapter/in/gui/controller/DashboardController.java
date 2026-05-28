@@ -1,13 +1,10 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/javafx/FXMLController.java to edit this template
- */
 package org.appsentinel.infrastructure.adapter.in.gui.controller;
 
 import java.awt.Desktop;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.ResourceBundle;
 import java.util.concurrent.Executors;
@@ -28,17 +25,18 @@ import javafx.scene.layout.VBox;
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 import javafx.fxml.Initializable;
+import javafx.scene.control.Button;
 import javafx.scene.control.ScrollPane;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
 
 /**
  * DashboardController: Gestiona el panel principal de métricas de
- * productividad. Integrado polimórficamente mediante la interfaz Controllable
- * del ecosistema del grupo.
+ * productividad. Rango del eje X optimizado dinámicamente según la hora de
+ * inicio de actividad.
  */
 public class DashboardController implements Initializable, Controllable {
 
-    private static final double LIMITE_TRABAJO_SEG = 5 * 3600; // 5 horas en segundos
+    private static final double LIMITE_PRODUCTIVO_SEG = 5 * 3600; // 5 horas en segundos
     private static final double LIMITE_DISTRACCION_SEG = 1 * 3600; // 1 hora en segundos
 
     private volatile long ultimaActualizacionUi = 0;
@@ -48,18 +46,18 @@ public class DashboardController implements Initializable, Controllable {
     private RegistroRepositoryPort repository;
     private String usuarioActual;
 
+    private LocalDate fechaConsultada = LocalDate.now();
+
     @FXML
     private Region scoreFill;
     @FXML
     private VBox vboxTopWork;
     @FXML
     private VBox vboxTopDistractions;
-
     @FXML
     private ProgressBar progressWorkCard;
     @FXML
     private ProgressBar progressDistractionCard;
-
     @FXML
     private Label lblTotalHours;
     @FXML
@@ -70,14 +68,16 @@ public class DashboardController implements Initializable, Controllable {
     private Label lblCount;
     @FXML
     private Label lblScorePercent;
-
-    // NUEVA ETIQUETA PARA EL MENSAJE DEL SCORE
+    @FXML
+    private Button btnAtras;
+    @FXML
+    private Button btnAdelante;
+    @FXML
+    private Label lblFecha;
     @FXML
     private Label lblScoreMessage;
-
     @FXML
     private BarChart<String, Number> barChartActivity;
-
     @FXML
     private ScrollPane rootPane;
 
@@ -89,15 +89,13 @@ public class DashboardController implements Initializable, Controllable {
         if (rootPane != null) {
             URL cssURL = this.getClass().getResource("/styles/dashboard.css");
             if (cssURL == null) {
-                System.err.println("❌ ERROR CRÍTICO: ¡El archivo CSS no se encuentra en 'src/main/resources/styles/'!");
+                System.err.println("❌ ERROR CRÍTICO: ¡El archivo CSS no se encuentra!");
             } else {
-                System.out.println("✅ Archivo CSS encontrado con éxito en: " + cssURL.toExternalForm());
                 rootPane.getStylesheets().add(cssURL.toExternalForm());
             }
         }
 
         Platform.runLater(() -> {
-            // Estructura simétrica de los paneles intermedios
             if (vboxTopWork != null && vboxTopDistractions != null) {
                 if (vboxTopWork.getParent() instanceof Region && vboxTopDistractions.getParent() instanceof Region) {
                     Region tarjetaTrabajo = (Region) vboxTopWork.getParent();
@@ -130,9 +128,19 @@ public class DashboardController implements Initializable, Controllable {
             return t;
         });
 
-        this.uiScheduler.scheduleAtFixedRate(() -> {
-            actualizarVistaSegura();
-        }, 5, 5, TimeUnit.SECONDS);
+        this.uiScheduler.scheduleAtFixedRate(this::actualizarVistaSegura, 5, 5, TimeUnit.SECONDS);
+
+        btnAtras.setOnAction(event -> {
+            fechaConsultada = fechaConsultada.minusDays(1);
+            actualizarPantallaPorFecha();
+        });
+
+        btnAdelante.setOnAction(event -> {
+            if (fechaConsultada.isBefore(LocalDate.now())) {
+                fechaConsultada = fechaConsultada.plusDays(1);
+                actualizarPantallaPorFecha();
+            }
+        });
     }
 
     @Override
@@ -161,10 +169,7 @@ public class DashboardController implements Initializable, Controllable {
         if (texto == null) {
             return "";
         }
-        if (texto.length() <= maxCaracteres) {
-            return texto;
-        }
-        return texto.substring(0, maxCaracteres) + "...";
+        return texto.length() <= maxCaracteres ? texto : texto.substring(0, maxCaracteres) + "...";
     }
 
     private void actualizarRankingTrabajo(List<Registro> topWorkApps) {
@@ -178,7 +183,7 @@ public class DashboardController implements Initializable, Controllable {
 
         int pos = 1;
         for (Registro app : topWorkApps) {
-            double progreso = (double) app.getDuracionSeg() / LIMITE_TRABAJO_SEG;
+            double progreso = (double) app.getDuracionSeg() / LIMITE_PRODUCTIVO_SEG;
             if (progreso > 1.0) {
                 progreso = 1.0;
             }
@@ -290,7 +295,7 @@ public class DashboardController implements Initializable, Controllable {
             lblCount.setText("0");
             lblScorePercent.setText("0%");
             if (lblScoreMessage != null) {
-                lblScoreMessage.setText(""); // Reseteo
+                lblScoreMessage.setText("");
             }
             if (progressWorkCard != null) {
                 progressWorkCard.setProgress(0.0);
@@ -301,7 +306,7 @@ public class DashboardController implements Initializable, Controllable {
             return;
         }
 
-        long totalSegundosTrabajo = 0;
+        long totalSegundosProductivo = 0;
         long totalSegundosDistraccion = 0;
 
         for (Registro r : registros) {
@@ -309,25 +314,23 @@ public class DashboardController implements Initializable, Controllable {
                 continue;
             }
             String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
-            String AppName = r.getNombreActividad() != null ? r.getNombreActividad().toLowerCase() : "";
 
-            if ("TRABAJO".equals(cat) || AppName.contains("netbeans")) {
-                totalSegundosTrabajo += r.getDuracionSeg();
+            if ("PRODUCTIVO".equals(cat)) {
+                totalSegundosProductivo += r.getDuracionSeg();
             } else if ("DISTRACCION".equals(cat)) {
                 totalSegundosDistraccion += r.getDuracionSeg();
             }
         }
 
-        long totalSegundos = totalSegundosTrabajo + totalSegundosDistraccion;
+        long totalSegundos = totalSegundosProductivo + totalSegundosDistraccion;
 
-        lblWorkTime.setText(formatearTiempo(totalSegundosTrabajo));
+        lblWorkTime.setText(formatearTiempo(totalSegundosProductivo));
         lblDistractionTime.setText(formatearTiempo(totalSegundosDistraccion));
         lblTotalHours.setText(formatearTiempo(totalSegundos));
-
         lblCount.setText(String.valueOf(registros.size()));
 
         if (progressWorkCard != null) {
-            double progTrabajo = (double) totalSegundosTrabajo / LIMITE_TRABAJO_SEG;
+            double progTrabajo = (double) totalSegundosProductivo / LIMITE_PRODUCTIVO_SEG;
             progressWorkCard.setProgress(Math.max(0.0, Math.min(1.0, progTrabajo)));
         }
         if (progressDistractionCard != null) {
@@ -342,11 +345,109 @@ public class DashboardController implements Initializable, Controllable {
         return String.format("%02dh %02dm", horas, minutes);
     }
 
-    // =========================================================================
-    // 📊 GRÁFICAS INTACTAS
-    // =========================================================================
+    private void actualizarPantallaPorFecha() {
+        if (lblFecha == null) {
+            return;
+        }
+
+        if (fechaConsultada.equals(LocalDate.now())) {
+            lblFecha.setText("Hoy");
+        } else if (fechaConsultada.equals(LocalDate.now().minusDays(1))) {
+            lblFecha.setText("Ayer");
+        } else {
+            java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd MMM, yyyy");
+            lblFecha.setText(fechaConsultada.format(formatter));
+        }
+
+        if (repository != null && usuarioActual != null) {
+            List<Registro> registrosDelDia = repository.findByUsuarioAndFecha(usuarioActual, fechaConsultada);
+
+            List<Registro> topTrabajo = registrosDelDia.stream()
+                    .filter(r -> r != null && "PRODUCTIVO".equalsIgnoreCase(r.getCategoria() != null ? r.getCategoria().trim() : ""))
+                    .collect(Collectors.groupingBy(Registro::getNombreActividad, Collectors.summingLong(Registro::getDuracionSeg)))
+                    .entrySet().stream()
+                    .map(entry -> {
+                        Registro reg = new Registro();
+                        reg.setNombreActividad(entry.getKey());
+                        reg.setDuracionSeg(entry.getValue());
+                        reg.setCategoria("PRODUCTIVO");
+                        return reg;
+                    })
+                    .sorted((r1, r2) -> Long.compare(r2.getDuracionSeg(), r1.getDuracionSeg()))
+                    .limit(5)
+                    .collect(Collectors.toList());
+
+            List<Registro> topDistracciones = registrosDelDia.stream()
+                    .filter(r -> r != null && "DISTRACCION".equalsIgnoreCase(r.getCategoria() != null ? r.getCategoria().trim() : ""))
+                    .collect(Collectors.groupingBy(Registro::getNombreActividad, Collectors.summingLong(Registro::getDuracionSeg)))
+                    .entrySet().stream()
+                    .map(entry -> {
+                        Registro reg = new Registro();
+                        reg.setNombreActividad(entry.getKey());
+                        reg.setDuracionSeg(entry.getValue());
+                        reg.setCategoria("DISTRACCION");
+                        return reg;
+                    })
+                    .sorted((r1, r2) -> Long.compare(r2.getDuracionSeg(), r1.getDuracionSeg()))
+                    .limit(5)
+                    .collect(Collectors.toList());
+
+            actualizarCards(registrosDelDia);
+            actualizarRankingTrabajo(topTrabajo);
+            actualizarRankingDistracciones(topDistracciones);
+            actualizarGraficoReal(registrosDelDia);
+            updateProductivityScore(registrosDelDia);
+        }
+    }
+
     private void actualizarGraficoReal(List<Registro> registros) {
         if (registros == null || registros.isEmpty()) {
+            Platform.runLater(() -> barChartActivity.getData().clear());
+            return;
+        }
+
+        double[] minutosProductivoPorHora = new double[24];
+        double[] minutosDistraccionPorHora = new double[24];
+        double maxMinutos = 0;
+
+        // Inicializamos los extremos para encontrar el rango de uso real
+        int minHora = 24;
+        int maxHora = -1;
+
+        for (Registro r : registros) {
+            if (r == null || r.getFechaRegistro() == null) {
+                continue;
+            }
+
+            int hora = r.getFechaRegistro().getHour();
+            if (hora < 0 || hora > 23) {
+                continue;
+            }
+
+            // Guardamos dinámicamente cuál es la primera y última hora con datos
+            if (hora < minHora) {
+                minHora = hora;
+            }
+            if (hora > maxHora) {
+                maxHora = hora;
+            }
+
+            double minutos = r.getDuracionSeg() / 60.0;
+            if (minutos <= 0) {
+                continue;
+            }
+
+            String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
+
+            if ("PRODUCTIVO".equals(cat)) {
+                minutosProductivoPorHora[hora] += minutos;
+            } else if ("DISTRACCION".equals(cat)) {
+                minutosDistraccionPorHora[hora] += minutos;
+            }
+        }
+
+        // Si no se procesaron horas válidas, limpiamos y salimos
+        if (maxHora == -1 || minHora == 24) {
             Platform.runLater(() -> barChartActivity.getData().clear());
             return;
         }
@@ -357,110 +458,85 @@ public class DashboardController implements Initializable, Controllable {
         XYChart.Series<String, Number> seriesDist = new XYChart.Series<>();
         seriesDist.setName("Distracción");
 
-        // TreeMap garantiza que las horas se ordenen automáticamente (09:00, 10:00, 11:00...)
-        java.util.Map<String, Double> acumuladoTrabajo = new java.util.TreeMap<>();
-        java.util.Map<String, Double> acumuladoDistraccion = new java.util.TreeMap<>();
+        // Construimos los datos del gráfico acotados estrictamente entre [minHora y maxHora]
+        for (int h = minHora; h <= maxHora; h++) {
+            double tWork = minutosProductivoPorHora[h];
+            double tDist = minutosDistraccionPorHora[h];
 
-        double limiteDistraccionHoy = 0;
-        for (Registro r : registros) {
-            if (r != null && "DISTRACCION".equalsIgnoreCase(r.getCategoria())) {
-                limiteDistraccionHoy += r.getDuracionSeg();
+            if (tWork > maxMinutos) {
+                maxMinutos = tWork;
             }
-        }
-        double limiteMinutosDistraccion = limiteDistraccionHoy / 60.0;
-
-        for (Registro r : registros) {
-            if (r == null || r.getFechaRegistro() == null || r.getFechaRegistro().toLocalTime() == null) {
-                continue;
+            if (tDist > maxMinutos) {
+                maxMinutos = tDist;
             }
 
-            // 🛠️ SOLUCIÓN AQUÍ: Extraemos la hora numérica y forzamos el formato estricto "HH:00"
-            int horaNumerica = r.getFechaRegistro().toLocalTime().getHour();
-            String horaFranja = String.format("%02d:00", horaNumerica);
-
-            double segundos = r.getDuracionSeg();
-            if (segundos <= 0) {
-                segundos = 1.0;
-            }
-            double minutosReales = segundos / 60.0;
-
-            String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
-            String nombre = r.getNombreActividad() != null ? r.getNombreActividad().toLowerCase() : "";
-
-            if (!acumuladoTrabajo.containsKey(horaFranja)) {
-                acumuladoTrabajo.put(horaFranja, 0.0);
-                acumuladoDistraccion.put(horaFranja, 0.0);
-            }
-
-            // Clasificación limpia e independiente por hora
-            if ("TRABAJO".equals(cat) || nombre.contains("netbeans") || nombre.contains("java")) {
-                acumuladoTrabajo.put(horaFranja, acumuladoTrabajo.get(horaFranja) + minutosReales);
-            } else {
-                if ("DISTRACCION".equals(cat) || nombre.contains("chrome") || nombre.contains("youtube") || nombre.contains("discord")) {
-                    acumuladoDistraccion.put(horaFranja, acumuladoDistraccion.get(horaFranja) + minutosReales);
-                }
-            }
+            String horaLabel = String.format("%02d:00", h);
+            seriesWork.getData().add(new XYChart.Data<>(horaLabel, tWork));
+            seriesDist.getData().add(new XYChart.Data<>(horaLabel, tDist));
         }
 
-        final double maxDistraccionPermitida = Math.max(3.0, limiteMinutosDistraccion);
-        acumuladoDistraccion.keySet().forEach(hora -> {
-            if (acumuladoDistraccion.get(hora) > maxDistraccionPermitida) {
-                acumuladoDistraccion.put(hora, maxDistraccionPermitida / Math.max(1, acumuladoDistraccion.size()));
-            }
-        });
-
-        // Pasamos los datos ordenados a las series de la gráfica
-        acumuladoTrabajo.forEach((hora, mins) -> seriesWork.getData().add(new XYChart.Data<>(hora, mins)));
-        acumuladoDistraccion.forEach((hora, mins) -> seriesDist.getData().add(new XYChart.Data<>(hora, mins)));
+        final double topeY = (maxMinutos > 0) ? Math.ceil(maxMinutos / 30.0) * 30.0 : 30.0;
+        final int horaInicio = minHora;
+        final int horaTope = maxHora;
 
         Platform.runLater(() -> {
-            javafx.collections.ObservableList<XYChart.Series<String, Number>> dataLista
-                    = javafx.collections.FXCollections.observableArrayList();
-            dataLista.addAll(seriesWork, seriesDist);
-            barChartActivity.setData(dataLista);
+            barChartActivity.setAnimated(false);
+            barChartActivity.getData().clear();
+
+            if (barChartActivity.getXAxis() instanceof javafx.scene.chart.CategoryAxis) {
+                javafx.scene.chart.CategoryAxis xAxis = (javafx.scene.chart.CategoryAxis) barChartActivity.getXAxis();
+                javafx.collections.ObservableList<String> categoriasDinamicas = javafx.collections.FXCollections.observableArrayList();
+
+                // El eje X ahora solo renderiza las horas que tienen registros reales
+                for (int h = horaInicio; h <= horaTope; h++) {
+                    categoriasDinamicas.add(String.format("%02d:00", h));
+                }
+                xAxis.setCategories(categoriasDinamicas);
+            }
+
+            if (barChartActivity.getYAxis() instanceof javafx.scene.chart.NumberAxis) {
+                javafx.scene.chart.NumberAxis yAxis = (javafx.scene.chart.NumberAxis) barChartActivity.getYAxis();
+                yAxis.setAutoRanging(false);
+                yAxis.setLowerBound(0);
+                yAxis.setUpperBound(topeY);
+                yAxis.setTickUnit(30);
+            }
+
+            barChartActivity.getData().addAll(seriesWork, seriesDist);
         });
     }
 
-    // =========================================================================
-    // 🧠 PRODUCTIVITY SCORE (CORREGIDO Y SEGURO PARA LAMBDAS)
-    // =========================================================================
     public void updateProductivityScore(List<Registro> registros) {
         int porcentajeFinal = calcularPorcentajeProductividad(registros);
 
         Platform.runLater(() -> {
-            // Actualizamos el porcentaje numérico
             lblScorePercent.setText(porcentajeFinal + "%");
 
-            // Declaramos las variables aquí dentro para que sean 100% seguras en la UI
             String mensajeEstado;
             String colorHex;
 
             if (porcentajeFinal >= 80) {
                 mensajeEstado = "EXCELENT WORK!";
-                colorHex = "#00FF7F"; // Verde neón
+                colorHex = "#00FF7F";
             } else if (porcentajeFinal >= 60) {
                 mensajeEstado = "GOOD JOB! KEEP IT UP.";
-                colorHex = "#FFA500"; // Naranja
+                colorHex = "#FFA500";
             } else if (porcentajeFinal >= 40) {
                 mensajeEstado = "YOU CAN DO BETTER.";
-                colorHex = "#FFA500"; // Amarillo/Naranja
+                colorHex = "#FFA500";
             } else if (porcentajeFinal > 0) {
                 mensajeEstado = "TOO MANY DISTRACTIONS!";
-                colorHex = "#F00C26"; // Rojo intenso
+                colorHex = "#F00C26";
             } else {
                 mensajeEstado = "NO DATA YET.";
-                colorHex = "#888888"; // Gris
+                colorHex = "#888888";
             }
 
-            // Aplicamos el texto y el estilo de forma segura
             if (lblScoreMessage != null) {
                 lblScoreMessage.setText(mensajeEstado);
                 lblScoreMessage.setStyle("-fx-text-fill: " + colorHex + "; -fx-font-weight: bold;");
-            } else {
-                System.out.println("⚠️ ATENCIÓN: lblScoreMessage es null. Revisa el fx:id en SceneBuilder.");
             }
 
-            // Ajustar la altura de la barra azul de fondo
             double maxHeight = 160.0;
             double factorProgreso = porcentajeFinal / 100.0;
             if (scoreFill != null) {
@@ -474,7 +550,7 @@ public class DashboardController implements Initializable, Controllable {
             return 0;
         }
 
-        double segundosTrabajo = 0;
+        double segundosProductivo = 0;
         double segundosDistraccion = 0;
 
         for (Registro r : registros) {
@@ -483,41 +559,42 @@ public class DashboardController implements Initializable, Controllable {
             }
 
             String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
-            String nombre = r.getNombreActividad() != null ? r.getNombreActividad().toLowerCase() : "";
 
-            // CLASIFICACIÓN IDÉNTICA A LA DE LAS TARJETAS (Card metrics)
-            if ("TRABAJO".equals(cat) || nombre.contains("netbeans")) {
-                segundosTrabajo += r.getDuracionSeg();
+            if ("PRODUCTIVO".equals(cat)) {
+                segundosProductivo += r.getDuracionSeg();
             } else if ("DISTRACCION".equals(cat)) {
                 segundosDistraccion += r.getDuracionSeg();
             }
         }
 
-        // 1. Pasamos a minutos exactos
-        double minutosTrabajo = segundosTrabajo / 60.0;
-        double minutosDistraccion = segundosDistraccion / 60.0;
-        double minutosTotales = minutosTrabajo + minutosDistraccion;
+        double minutesProductivo = segundosProductivo / 60.0;
+        double minutesDistraccion = segundosDistraccion / 60.0;
+        double minutesTotales = minutesProductivo + minutesDistraccion;
 
-        if (minutosTotales <= 0) {
+        if (minutesTotales <= 0) {
             return 0;
         }
 
-        // 2. Tu regla de 3 estricta: (work time * 100) / total hours
-        double resultado = (minutosTrabajo * 100.0) / minutosTotales;
-
-        int porcentajeFinal = (int) Math.round(resultado);
-
-        return Math.max(0, Math.min(100, porcentajeFinal));
+        double resultado = (minutesProductivo * 100.0) / minutesTotales;
+        return Math.max(0, Math.min(100, (int) Math.round(resultado)));
     }
 
     private void actualizarVistaSegura() {
+        if (!fechaConsultada.equals(LocalDate.now())) {
+            return;
+        }
+
         long ahora = System.currentTimeMillis();
         if (ahora - ultimaActualizacionUi < MIN_MS_ENTRE_ACTUALIZACIONES) {
             return;
         }
-        ultimaActualizacionUi = ahora;
+        ultimaActualizacionUi = telemetryAhora();
 
         Platform.runLater(this::recargarDatosDesdeBd);
+    }
+
+    private long telemetryAhora() {
+        return System.currentTimeMillis();
     }
 
     private void recargarDatosDesdeBd() {
@@ -530,15 +607,14 @@ public class DashboardController implements Initializable, Controllable {
 
             if ((topTrabajo == null || topTrabajo.isEmpty()) && actividad != null && !actividad.isEmpty()) {
                 topTrabajo = actividad.stream()
-                        .filter(r -> r != null && (("TRABAJO".equalsIgnoreCase(r.getCategoria() != null ? r.getCategoria().trim() : ""))
-                        || (r.getNombreActividad() != null && r.getNombreActividad().toLowerCase().contains("netbeans"))))
+                        .filter(r -> r != null && "PRODUCTIVO".equalsIgnoreCase(r.getCategoria() != null ? r.getCategoria().trim() : ""))
                         .collect(Collectors.groupingBy(Registro::getNombreActividad, Collectors.summingLong(Registro::getDuracionSeg)))
                         .entrySet().stream()
                         .map(entry -> {
                             Registro reg = new Registro();
                             reg.setNombreActividad(entry.getKey());
                             reg.setDuracionSeg(entry.getValue());
-                            reg.setCategoria("TRABAJO");
+                            reg.setCategoria("PRODUCTIVO");
                             return reg;
                         })
                         .sorted((r1, r2) -> Long.compare(r2.getDuracionSeg(), r1.getDuracionSeg()))
@@ -550,7 +626,6 @@ public class DashboardController implements Initializable, Controllable {
             actualizarRankingTrabajo(topTrabajo);
             actualizarRankingDistracciones(topDistracciones);
             actualizarGraficoReal(actividad);
-
             updateProductivityScore(actividad);
         }
     }

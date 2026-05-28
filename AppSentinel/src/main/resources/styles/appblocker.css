@@ -1,133 +1,144 @@
-/*
- * Empty Stylesheet file.
- */
-
-/* --- BASE Y FONDOS --- */
-.mainFxmlClass {
-    -fx-background-color: #06090e;
-    -fx-font-family: "Segoe UI", sans-serif;
-}
-
-/* --- CABECERA --- */
-#tituloSeccion {
-    -fx-text-fill: #FFFFFF;
-    -fx-font-size: 20px; /* Tamaño mínimo para título principal */
-    -fx-font-weight: bold;
-    -fx-font-family: "Courier New";
-}
-
-#subtituloSeccion {
-    -fx-text-fill: #FFFFFF;
-    -fx-font-size: 10px; /* Tamaño ultracompacto */
-    -fx-font-family: "Consolas", monospace;
-    -fx-opacity: 0.8;
-}
-
-/* --- BARRA DE AÑADIR --- */
-.text-field {
-    -fx-background-color: #0b1016;
-    -fx-border-color: #00fbff;
-    -fx-border-radius: 4;
-    -fx-background-radius: 4;
-    -fx-text-fill: white;
-    -fx-font-size: 10px;
-    -fx-padding: 4 8;
-    -fx-prompt-text-fill: #484f58;
-}
-
-#btnAnadir {
-    -fx-background-color: transparent;
-    -fx-border-color: #00fbff;
-    -fx-border-radius: 4;
-    -fx-border-width: 1;
-    -fx-text-fill: #00fbff;
-    -fx-font-weight: bold;
-    -fx-font-size: 10px;
-    -fx-cursor: hand;
-}
-
-#btnAnadir:hover {
-    -fx-background-color: rgba(0, 251, 255, 0.1);
-}
-
-/* --- PANELES PRINCIPALES --- */
-.panel-trabajo {
-    -fx-background-color: rgba(0, 251, 255, 0.02);
-    -fx-border-color: #00fbff;
-    -fx-border-width: 1;
-    -fx-border-radius: 8;
-    -fx-background-radius: 8;
-}
-
-.panel-ocio {
-    -fx-background-color: rgba(255, 51, 51, 0.02);
-    -fx-border-color: #ff3333;
-    -fx-border-width: 1;
-    -fx-border-radius: 8;
-    -fx-background-radius: 8;
-}
-
-/* --- TÍTULOS DE LOS PANELES --- */
-#labelTrabajo, #labelOcio {
-    -fx-text-fill: white;
-    -fx-font-size: 10px;
-    -fx-font-weight: bold;
-    -fx-font-family: "Courier New";
-}
-
-/* --- LISTVIEWS --- */
+/* =========================================================================
+   VISTA DE LISTAS GENERALES
+   ========================================================================= */
 .list-view {
     -fx-background-color: transparent;
-    -fx-border-color: transparent;
+    -fx-control-inner-background: #121214;
+    -fx-background-radius: 8px;
+    -fx-padding: 4px;
 }
 
-.list-cell {
-    -fx-background-color: #121820;
-    -fx-text-fill: white;
-    -fx-font-size: 11px;
-    -fx-padding: 5 8;
-    -fx-background-radius: 4;
-    -fx-border-radius: 4;
-    -fx-border-color: #06090e;
-    -fx-border-width: 0 0 3 0;
+/* Celda base para las listas */
+.celda-app-base {
+    -fx-background-color: #1a1a1e;
+    -fx-text-fill: #ffffff;
+    -fx-font-family: 'System';
+    -fx-padding: 10px;
+    -fx-background-radius: 6px;
 }
 
-.list-cell:filled:hover {
-    -fx-background-color: #1a222d;
+/* =========================================================================
+   ESTADOS DE SELECCIÓN (EL REBORDE Y FEEDBACK VISUAL)
+   ========================================================================= */
+/* Cuando seleccionas un elemento en la lista de TRABAJO (Cian) */
+.lista-trabajo .list-cell:selected {
+    -fx-background-color: #1a2a3a !important;
+    -fx-text-fill: #00e5ff !important;
+    -fx-border-color: #00e5ff !important;
+    -fx-border-width: 2px !important;
+    -fx-border-radius: 6px !important;
+    -fx-background-radius: 6px !important;
+    -fx-font-weight: bold !important;
 }
 
-.list-cell:filled:selected {
-    -fx-background-color: rgba(0, 251, 255, 0.2);
-    -fx-border-color: #00fbff;
-    -fx-border-width: 0 0 3 0;
+/* Cuando seleccionas un elemento en la lista de OCIO (Naranja) */
+.lista-ocio .list-cell:selected {
+    -fx-background-color: #2a1a15 !important;
+    -fx-text-fill: #ff5500 !important;
+    -fx-border-color: #ff5500 !important;
+    -fx-border-width: 2px !important;
+    -fx-border-radius: 6px !important;
+    -fx-background-radius: 6px !important;
+    -fx-font-weight: bold !important;
 }
 
-#listaOcio .list-cell:filled:selected {
-    -fx-background-color: rgba(255, 51, 51, 0.2);
-    -fx-border-color: #ff3333;
-}
-
-/* --- BOTONES CENTRALES --- */
-.btn-center {
-    -fx-background-color: transparent;
-    -fx-border-color: #00fbff;
-    -fx-border-width: 1;
-    -fx-border-radius: 4;
-    -fx-text-fill: #00fbff;
+/* =========================================================================
+   BOTONES CENTRALES DE INTERCAMBIO (REPARADOS)
+   ========================================================================= */
+.btn-pasar-ocio {
+    -fx-background-color: #1a1a1e;
+    -fx-text-fill: #ff5500;
+    -fx-border-color: #ff5500;
+    -fx-border-width: 1.5px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-font-family: 'System';
     -fx-font-weight: bold;
-    -fx-font-size: 10px;
+    -fx-font-size: 16px;       /* Tamaño de flecha ideal */
+    -fx-alignment: center;
+    -fx-min-width: 55px;       /* Forzamos el ancho para que no salgan los puntos (...) */
+    -fx-pref-width: 55px;
+    -fx-min-height: 35px;
     -fx-cursor: hand;
 }
-
-.btn-center:hover {
-    -fx-background-color: rgba(0, 251, 255, 0.1);
+.btn-pasar-ocio:hover {
+    -fx-background-color: #ff5500;
+    -fx-text-fill: #ffffff;
 }
 
-.list-view .scroll-bar:vertical {
+.btn-pasar-trabajo {
+    -fx-background-color: #1a1a1e;
+    -fx-text-fill: #00e5ff;
+    -fx-border-color: #00e5ff;
+    -fx-border-width: 1.5px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-font-family: 'System';
+    -fx-font-weight: bold;
+    -fx-font-size: 16px;       /* Tamaño de flecha ideal */
+    -fx-alignment: center;
+    -fx-min-width: 55px;       /* Forzamos el ancho para que no salgan los puntos (...) */
+    -fx-pref-width: 55px;
+    -fx-min-height: 35px;
+    -fx-cursor: hand;
+}
+.btn-pasar-trabajo:hover {
+    -fx-background-color: #00e5ff;
+    -fx-text-fill: #121214;
+}
+
+/* =========================================================================
+   VENTANA MODAL (SE MANTIENE INTACTO TU DISEÑO)
+   ========================================================================= */
+.modal-raiz {
+    -fx-background-color: #121214;
+    -fx-border-color: #00e5ff;
+    -fx-border-width: 2px;
+    -fx-background-radius: 12px;
+    -fx-border-radius: 12px;
+}
+.modal-titulo {
+    -fx-text-fill: #ffffff;
+    -fx-font-family: 'System';
+    -fx-font-weight: bold;
+    -fx-font-size: 14px;
+}
+.modal-boton-cerrar {
+    -fx-background-color: #202024;
+    -fx-text-fill: #ff5500;
+    -fx-cursor: hand;
+    -fx-background-radius: 6px;
+    -fx-font-weight: bold;
+}
+.modal-caja-busqueda {
+    -fx-background-color: #202024;
+    -fx-background-radius: 6px;
+    -fx-border-color: #333333;
+    -fx-border-width: 1px;
+    -fx-border-radius: 6px;
+}
+.modal-txt-buscar {
     -fx-background-color: transparent;
-    -fx-pref-width: 5;
+    -fx-text-fill: #ffffff;
+    -fx-font-family: 'System';
 }
-.list-view .scroll-bar .thumb {
-    -fx-background-color: #2a3340;
-    -fx-background-radius: 5;
+.modal-lista {
+    -fx-background-color: #202024;
+    -fx-control-inner-background: #202024;
+    -fx-background-radius: 8px;
+}
+.modal-btn-guardar {
+    -fx-background-color: #1a1a1e;
+    -fx-text-fill: #00e5ff;
+    -fx-border-color: #00e5ff;
+    -fx-border-width: 1.5px;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-font-family: 'System';
+    -fx-font-weight: bold;
+    -fx-cursor: hand;
+}
+.modal-btn-guardar:hover {
+    -fx-background-color: #00e5ff;
+    -fx-text-fill: #121214;
 }

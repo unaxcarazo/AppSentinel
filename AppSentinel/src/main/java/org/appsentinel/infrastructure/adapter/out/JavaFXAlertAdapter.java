@@ -64,7 +64,7 @@ public class JavaFXAlertAdapter implements NotificacionPort {
                         + "-fx-border-width: 2;"
                 );
 
-                Label lblTitulo = new Label("⚠️ Atención: " + nombreApp);
+                Label lblTitulo = new Label("⚠️ Atención : " + nombreApp);
                 lblTitulo.setStyle("-fx-text-fill: #FFB000; -fx-font-size: 16px; -fx-font-weight: bold;");
 
                 Label lblMensaje = new Label(mensaje);
@@ -129,7 +129,7 @@ public class JavaFXAlertAdapter implements NotificacionPort {
             layoutBloqueo.setStyle("-fx-background-color: rgba(15, 15, 15, 0.98); -fx-padding: 40;");
 
             // Etiqueta del título (Rojo neón de advertencia)
-            Label lblTitulo = new Label("⚠️ ¡SISTEMA BLOQUEADO POR DISTRACCIÓN!");
+            Label lblTitulo = new Label("⚠ SISTEMA BLOQUEADO POR DISTRACCIÓN");
             lblTitulo.setStyle("-fx-text-fill: #F00C26; -fx-font-size: 36px; -fx-font-weight: bold;");
 
             // Etiqueta de detalle

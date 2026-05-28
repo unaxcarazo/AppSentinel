@@ -11,6 +11,7 @@ import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -39,8 +40,8 @@ import java.util.regex.Pattern;
 public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoActivoPort {
 
     private static final Logger LOGGER = Logger.getLogger(TimeTrackingService.class.getName());
-
-    private final DistractionDetector detector;
+    
+     private final DistractionDetector detector;
     private final RegistroRepositoryPort repository;
     private final NotificacionPort notificacion;
     private KillerPort killer;
@@ -107,13 +108,19 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     // -------------------------------------------------------------------------
     // Puertos de entrada
     // -------------------------------------------------------------------------
-
+    
+    //PRUEBAS FECHA ==================================
+    public List<Registro> obtenerRegistrosAndFecha(String usuario, LocalDate fecha) {
+        return this.repository.findByUsuarioAndFecha(usuario, fecha);
+    }
+    
     @Override
     public void reportarActividadSistema(String proceso, String titulo, int pid) {
         ultimoInputUsuario = LocalDateTime.now();
         procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso), titulo, -1, pid);
     }
-
+    // ===============================================
+    
     @Override
     public void reportarEventoNavegador(String url, String titulo, int tabId) {
         ultimoInputUsuario = LocalDateTime.now();
@@ -483,6 +490,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         clavesAEliminar.forEach(sesiones::remove);
         activas.keySet().removeIf(clave -> !sesiones.containsKey(clave));
     }
+    
+    
 
     // -------------------------------------------------------------------------
     // Ciclo de vida del servicio

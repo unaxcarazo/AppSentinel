@@ -22,6 +22,11 @@
     -fx-border-radius: 15;
 }
 
+.date-text, .date-icon, .kpi-stat-positive{
+   -fx-text-fill: #FFFFFF; 
+        
+}
+
 /* ----------- TEXTOS Y CABECERAS ----------- */
 .dashboard-main-title {
     -fx-text-fill: -color-text-main;

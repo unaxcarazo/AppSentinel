@@ -1,5 +1,6 @@
 package org.appsentinel.domain.port.out;
 
+import java.time.LocalDate;
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.model.ResumenActividad;
 
@@ -112,4 +113,10 @@ public interface RegistroRepositoryPort {
     List<Registro> obtenerBloqueosHoy(String usuario);
     
     List<Registro> obtenerHistorialCompleto();
+    
+    // Pruebas fechas
+    
+    List<Registro> findByUsuario(String usuario);
+    
+    List<Registro> findByUsuarioAndFecha(String usuario, LocalDate fecha);
 }

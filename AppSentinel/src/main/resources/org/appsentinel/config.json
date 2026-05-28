@@ -1,6 +1,6 @@
 {
   "listaBlanca": [
-    "code", "idea", "eclipse", "netbeans", "terminal", "cmd", "powershell",
+    "code", "idea", "eclipse", "netbeans64", "terminal", "cmd", "powershell",
     "putty", "git", "github desktop", "notepad++", "sublime_text",
     "intellij", "pycharm", "webstorm", "datagrip", "postman", "docker desktop",
     "excel", "word", "powerpoint", "teams", "slack", "zoom", "obsidian",

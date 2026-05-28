@@ -71,13 +71,24 @@
 }
 
 
-.icon-dashboard { -fx-shape: "M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"; }
-.icon-blocker { -fx-shape: "M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"; }
-.icon-performance { -fx-shape: "M16 6l-2.5 5.5H18l-8 11.5v-7H6l8-10z"; }
-.icon-history { -fx-shape: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"; }
+.icon-dashboard {
+    -fx-shape: "M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z";
+}
+.icon-blocker {
+    -fx-shape: "M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z";
+}
+.icon-performance {
+    -fx-shape: "M16 6l-2.5 5.5H18l-8 11.5v-7H6l8-10z";
+}
+.icon-history {
+    -fx-shape: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z";
+}
 .icon-shield-orange {
     -fx-background-color: #FF3D00;
-    -fx-min-width: 18px; -fx-min-height: 18px; -fx-max-width: 18px; -fx-max-height: 18px;
+    -fx-min-width: 18px;
+    -fx-min-height: 18px;
+    -fx-max-width: 18px;
+    -fx-max-height: 18px;
     -fx-shape: "M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z";
 }
 
@@ -228,27 +239,33 @@
 
 
 /* ===== PROGRESS BARS ===== */
+/* Estructura base: Aseguramos altura explícita para evitar colapsos */
 .progress-bar {
-    -fx-pref-height: 6;
-    -fx-background-radius: 3;
+    -fx-min-height: 12px;
+    -fx-pref-height: 12px;
+    -fx-max-height: 12px;
 }
 
-
-.progress-bar > .track {
-    -fx-background-color: #2A2A2A;
-    -fx-background-radius: 3;
+/* El contenedor interno (Fondo/Canal de la barra) */
+.progress-bar .track {
+    -fx-background-color: #1A1A1A;
+    -fx-background-radius: 6px;
+    -fx-border-color: #2A2A2A;
+    -fx-border-radius: 6px;
 }
 
-
-.progress-bar-cyan > .bar {
+/* Relleno para procesos de Trabajo (Cian) */
+.progress-bar-cyan .bar {
     -fx-background-color: #00E5FF;
-    -fx-background-radius: 3;
+    -fx-background-radius: 6px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 229, 255, 0.4), 8, 0.2, 0, 0);
 }
 
-
-.progress-bar-orange > .bar {
+/* Relleno para procesos de Distracción (Naranja) */
+.progress-bar-orange .bar {
     -fx-background-color: #FF3D00;
-    -fx-background-radius: 3;
+    -fx-background-radius: 6px;
+    -fx-effect: dropshadow(gaussian, rgba(255, 61, 0, 0.4), 8, 0.2, 0, 0);
 }
 
 
@@ -793,7 +810,10 @@
 .perf-icon {
     -fx-shape: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z";
     -fx-background-color: #FF3D00;
-    -fx-min-width: 24; -fx-min-height: 24; -fx-max-width: 24; -fx-max-height: 24;
+    -fx-min-width: 24;
+    -fx-min-height: 24;
+    -fx-max-width: 24;
+    -fx-max-height: 24;
 }
 
 
@@ -923,13 +943,21 @@
 .perf-chart .chart-series-area-fill {
     -fx-opacity: 1.0;
 }
-.perf-chart .default-color0.chart-series-area-fill { -fx-fill: rgba(0, 229, 255, 0.2); }
-.perf-chart .default-color1.chart-series-area-fill { -fx-fill: rgba(255, 61, 0, 0.2); }
-.perf-chart .chart-series-area-line {    
+.perf-chart .default-color0.chart-series-area-fill {
+    -fx-fill: rgba(0, 229, 255, 0.2);
+}
+.perf-chart .default-color1.chart-series-area-fill {
+    -fx-fill: rgba(255, 61, 0, 0.2);
+}
+.perf-chart .chart-series-area-line {
     -fx-stroke-width: 2px;
 }
-.perf-chart .default-color0.chart-series-area-line { -fx-stroke: #00E5FF; }
-.perf-chart .default-color1.chart-series-area-line { -fx-stroke: #FF3D00; }
+.perf-chart .default-color0.chart-series-area-line {
+    -fx-stroke: #00E5FF;
+}
+.perf-chart .default-color1.chart-series-area-line {
+    -fx-stroke: #FF3D00;
+}
 .perf-chart .chart-line-symbol, .perf-chart .chart-area-symbol {
     -fx-background-color: transparent, transparent;
     -fx-padding: 0;
@@ -978,9 +1006,16 @@
     -fx-background-radius: 8px;
     -fx-text-fill: white;
 }
-.filter-combo .label { -fx-text-fill: white; }
-.filter-combo .list-cell { -fx-background-color: #1A1A1A; -fx-text-fill: white; }
-.filter-combo .list-cell:hover { -fx-background-color: #333333; }
+.filter-combo .label {
+    -fx-text-fill: white;
+}
+.filter-combo .list-cell {
+    -fx-background-color: #1A1A1A;
+    -fx-text-fill: white;
+}
+.filter-combo .list-cell:hover {
+    -fx-background-color: #333333;
+}
 
 
 /* History Table */
@@ -1123,7 +1158,7 @@
    ========================================================================= */
 
 /* Estructura base para ambas barras (Fondo/Canal de la barra) */
-.progress-bar-cyan, 
+.progress-bar-cyan,
 .progress-bar-orange {
     -fx-background-color: #222222; /* Color de fondo del contenedor */
     -fx-background-radius: 5px;
@@ -1131,7 +1166,7 @@
 }
 
 /* Modificar el contenedor interno del fondo de JavaFX */
-.progress-bar-cyan .track, 
+.progress-bar-cyan .track,
 .progress-bar-orange .track {
     -fx-background-color: #222222;
     -fx-background-radius: 5px;
@@ -1139,7 +1174,7 @@
 
 /* 🚀 EL TRUCO: Pintar el relleno real de la CPU (Cian) */
 .progress-bar-cyan .bar {
-    -fx-background-color: #00E5FF; 
+    -fx-background-color: #00E5FF;
     -fx-background-radius: 5px;
 }
 

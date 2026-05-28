@@ -11,7 +11,6 @@ import java.util.TimerTask;
 import java.util.List;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleDoubleProperty;
-import javafx.beans.property.SimpleLongProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.fxml.FXML;
@@ -24,6 +23,7 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
+import org.appsentinel.domain.port.out.CategoriaRepositoryPort;
 
 import org.appsentinel.domain.port.out.RendimientoSistemaPort;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
@@ -34,7 +34,7 @@ import oshi.software.os.OperatingSystem;
 public class PerformanceController implements Initializable, Controllable {
 
     @FXML
-    private TableView<OSProcess> tablaProcesos; // Vinculado al fx:id de tu archivo FXML
+    private TableView<MonitoredAppRow> tablaProcesos;
 
     @FXML
     private Label lblCpuLoad;
@@ -64,31 +64,46 @@ public class PerformanceController implements Initializable, Controllable {
     @FXML
     private TextField txtSearchProcess;
 
-    // 🚀 Cambiados de ProcesoInfo a OSProcess nativo de OSHI
+    // 🚀 CORREGIDO: Las columnas ahora consumen estrictamente el tipo MonitoredAppRow
     @FXML
-    private TableColumn<OSProcess, String> colName;
+    private TableColumn<MonitoredAppRow, String> colName;
     @FXML
-    private TableColumn<OSProcess, String> colCategory;
+    private TableColumn<MonitoredAppRow, String> colCategory;
     @FXML
-    private TableColumn<OSProcess, Double> colCpu;
+    private TableColumn<MonitoredAppRow, Double> colCpu;
     @FXML
-    private TableColumn<OSProcess, Double> colRam;
+    private TableColumn<MonitoredAppRow, Double> colRam;
     @FXML
-    private TableColumn<OSProcess, Long> colTime;
+    private TableColumn<MonitoredAppRow, String> colTime; // 🚀 Cambiado a String para pintar el formato HH:mm:ss limpio
 
     private RendimientoSistemaPort rendimientoService;
-    private OperatingSystem osNativo; // Para obtener el snapshot de procesos de forma segura en la UI
+    private CategoriaRepositoryPort categoriasService;
+    private OperatingSystem osNativo;
     private Timer timer;
     private XYChart.Series<Number, Number> rxSeries;
     private XYChart.Series<Number, Number> txSeries;
     private int xTick = 0;
 
+    private List<oshi.hardware.NetworkIF> interfacesRed;
+    private long totalBytesRxAnterior = 0;
+    private long totalBytesTxAnterior = 0;
+    private long timestampAnterior = 0;
+
     @Override
     public void init(AppContext ctx) {
         this.rendimientoService = ctx.rendimiento();
-        // Inicializamos el acceso al OS de manera local para la vista sin romper el puerto del dominio
+        this.categoriasService = ctx.categorias();
         try {
             this.osNativo = new SystemInfo().getOperatingSystem();
+
+            this.interfacesRed = new SystemInfo().getHardware().getNetworkIFs();
+            for (oshi.hardware.NetworkIF net : interfacesRed) {
+                net.updateAttributes();
+                this.totalBytesRxAnterior += net.getBytesRecv();
+                this.totalBytesTxAnterior += net.getBytesSent();
+            }
+            this.timestampAnterior = System.currentTimeMillis();
+
         } catch (Exception e) {
             System.err.println("[UI] No se pudo inicializar el acceso nativo a OS en el controlador: " + e.getMessage());
         }
@@ -112,32 +127,18 @@ public class PerformanceController implements Initializable, Controllable {
     }
 
     private void setupTable() {
-        // 🚀 Mapeo directo a las propiedades y getters nativos de OSProcess
+        // 🚀 CORREGIDO: Mapeo explícito a las propiedades internas de MonitoredAppRow
         colName.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getName()));
-        colCategory.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getState().name()));
-        
-        // OSHI devuelve valores acumulativos u orientados a fracciones. Formateamos a porcentaje (0.0 - 100.0)
-        colCpu.setCellValueFactory(cd -> {
-            double cpu = cd.getValue().getProcessCpuLoadCumulative() * 100.0;
-            return new SimpleDoubleProperty(Double.isNaN(cpu) ? 0.0 : cpu).asObject();
-        });
-        
-        colRam.setCellValueFactory(cd -> {
-            if (rendimientoService == null || rendimientoService.getRamTotalMb() == 0) {
-                return new SimpleDoubleProperty(0.0).asObject();
-            }
-            // Pasamos los Resident Set Size (bytes ocupados en RAM física) a porcentaje del total del sistema
-            double totalBytes = rendimientoService.getRamTotalMb() * 1024.0 * 1024.0;
-            double porcentajeRam = (cd.getValue().getResidentSetSize() / totalBytes) * 100.0;
-            return new SimpleDoubleProperty(porcentajeRam).asObject();
-        });
-        
-        colTime.setCellValueFactory(cd -> new SimpleLongProperty(cd.getValue().getUpTime()).asObject());
+        colCategory.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getType()));
 
-        colTime.setCellFactory(col -> new TiempoActivoCell());
+        colCpu.setCellValueFactory(cd -> new SimpleDoubleProperty(cd.getValue().getCpuUsage()).asObject());
+        colRam.setCellValueFactory(cd -> new SimpleDoubleProperty(cd.getValue().getMemoryUsage()).asObject());
+        colTime.setCellValueFactory(cd -> new SimpleStringProperty(cd.getValue().getActiveTime()));
+
+        // Asignación de factorías visuales personalizadas pasando el control dinámico del color
         colCategory.setCellFactory(col -> new CategoriaBadgeCell());
-        colCpu.setCellFactory(col -> new ProgressBarCell("micro-bar-cyan"));
-        colRam.setCellFactory(col -> new ProgressBarCell("micro-bar-orange"));
+        colCpu.setCellFactory(col -> new ProgressBarCell());
+        colRam.setCellFactory(col -> new ProgressBarCell());
 
         txtSearchProcess.textProperty().addListener((obs, oldVal, newVal) -> {
             System.out.println("[BUSCADOR] Filtrado deshabilitado temporalmente: " + newVal);
@@ -157,6 +158,7 @@ public class PerformanceController implements Initializable, Controllable {
     }
 
     private void updateUIDirecto() {
+        // === 1. Métricas Globales ===
         double cpuGlobal = rendimientoService.getCpuPorcentajeGlobal();
         double ramPorcentaje = rendimientoService.getRamPorcentaje();
         double ramUsadaGb = rendimientoService.getRamUsadaMb() / 1024.0;
@@ -172,25 +174,150 @@ public class PerformanceController implements Initializable, Controllable {
         lblRamTotal.setText(String.format("%.1f GB Total", ramTotalGb));
         progressRam.setProgress(ramPorcentaje / 100.0);
 
-        // 🚀 Carga de procesos nativos en la tabla de forma segura usando OSHI directamente
-        if (osNativo != null && tablaProcesos != null) {
+        // 2 
+        // === 2. Carga Filtrada desde Base de Datos a la Tabla ===
+        if (osNativo != null && tablaProcesos != null && categoriasService != null) {
             try {
-                List<OSProcess> procesos = osNativo.getProcesses(
-                    OperatingSystem.ProcessFiltering.VALID_PROCESS, 
-                    OperatingSystem.ProcessSorting.CPU_DESC, 
-                    15
+                List<String> appsProductivas = categoriasService.obtenerAppsPorCategoria("PRODUCTIVO");
+                List<String> appsDistraccion = categoriasService.obtenerAppsPorCategoria("DISTRACCION");
+
+                java.util.Set<String> setProductivas = new java.util.HashSet<>();
+                if (appsProductivas != null) {
+                    for (String app : appsProductivas) {
+                        setProductivas.add(app.toLowerCase().replace(".exe", "").trim());
+                    }
+                }
+
+                java.util.Set<String> setDistraccion = new java.util.HashSet<>();
+                if (appsDistraccion != null) {
+                    for (String app : appsDistraccion) {
+                        setDistraccion.add(app.toLowerCase().replace(".exe", "").trim());
+                    }
+                }
+
+                List<OSProcess> todosLosProcesos = osNativo.getProcesses(
+                        OperatingSystem.ProcessFiltering.VALID_PROCESS,
+                        OperatingSystem.ProcessSorting.CPU_DESC,
+                        100
                 );
-                tablaProcesos.setItems(FXCollections.observableArrayList(procesos));
+
+                // 🚀 Mapa para agrupar y unificar procesos duplicados por su nombre formateado
+                java.util.Map<String, MonitoredAppRow> mapaUnificado = new java.util.LinkedHashMap<>();
+
+                for (OSProcess proc : todosLosProcesos) {
+                    String nombreProcesoRaw = proc.getName();
+                    if (nombreProcesoRaw == null) {
+                        continue;
+                    }
+
+                    String nombreProcesoLimpio = nombreProcesoRaw.toLowerCase().replace(".exe", "").trim();
+
+                    boolean esTrabajo = setProductivas.contains(nombreProcesoLimpio);
+                    boolean esDistraccion = setDistraccion.contains(nombreProcesoLimpio);
+
+                    if (esTrabajo || esDistraccion) {
+                        String tipoUI = esTrabajo ? "WORK" : "DISTRACTION";
+
+                        // Formateamos el nombre respetando mayúsculas/minúsculas originales limpiando el .exe
+                        String nombreMostrar = nombreProcesoRaw;
+                        if (nombreMostrar.toLowerCase().endsWith(".exe")) {
+                            nombreMostrar = nombreMostrar.substring(0, nombreMostrar.length() - 4);
+                        }
+                        // Aseguramos que empiece con mayúscula (ej: chrome -> Chrome)
+                        if (!nombreMostrar.isEmpty()) {
+                            nombreMostrar = nombreMostrar.substring(0, 1).toUpperCase() + nombreMostrar.substring(1);
+                        }
+
+                        // Cálculo de métricas del proceso actual
+                        double cpuProc = proc.getProcessCpuLoadCumulative() * 100.0;
+                        if (Double.isNaN(cpuProc)) {
+                            cpuProc = 0.0;
+                        }
+
+                        double memProc = (proc.getResidentSetSize() / (1024.0 * 1024.0 * 1024.0)) / ramTotalGb * 100.0;
+                        long uptimeSegundosActual = proc.getUpTime() / 1000;
+
+                        if (mapaUnificado.containsKey(nombreMostrar)) {
+                            // 🔄 Si la app ya existe, recuperamos los datos acumulados usando tus GETTERS reales
+                            MonitoredAppRow filaExisting = mapaUnificado.get(nombreMostrar);
+
+                            double cpuAcumulada = filaExisting.getCpuUsage() + cpuProc;
+                            double memAcumulada = filaExisting.getMemoryUsage() + memProc;
+
+                            // Comparamos el tiempo activo para mantener el mayor
+                            long segundosExistentes = parsearTiempoASegundos(filaExisting.getActiveTime());
+                            String tiempoGanador = filaExisting.getActiveTime();
+
+                            if (uptimeSegundosActual > segundosExistentes) {
+                                tiempoGanador = formatearTiempo(uptimeSegundosActual);
+                            }
+
+                            // ✨ Reemplazamos en el mapa usando tu constructor inmutable
+                            MonitoredAppRow filaActualizada = new MonitoredAppRow(
+                                    nombreMostrar,
+                                    tipoUI,
+                                    cpuAcumulada,
+                                    memAcumulada,
+                                    tiempoGanador
+                            );
+
+                            mapaUnificado.put(nombreMostrar, filaActualizada);
+
+                        } else {
+                            // ✨ Si es la primera vez que vemos la app, la registramos normalmente
+                            String tiempoFormateado = formatearTiempo(uptimeSegundosActual);
+                            MonitoredAppRow nuevaFila = new MonitoredAppRow(nombreMostrar, tipoUI, cpuProc, memProc, tiempoFormateado);
+                            mapaUnificado.put(nombreMostrar, nuevaFila);
+                        }
+                    }
+                }
+
+                // Enviamos la lista limpia y sin duplicados directos a la tabla de JavaFX
+                tablaProcesos.setItems(FXCollections.observableArrayList(mapaUnificado.values()));
+
             } catch (Exception e) {
-                System.err.println("[UI] Error al actualizar la tabla de procesos: " + e.getMessage());
+                System.err.println("[UI] Error al unificar procesos de la Base de Datos: " + e.getMessage());
             }
         }
 
-        lblNetDown.setText("0.0 MB/s ⬇");
-        lblNetUp.setText("0.0 MB/s ⬆");
+        // === 3. Red I/O ===
+        long totalBytesRxActual = 0;
+        long totalBytesTxActual = 0;
 
-        rxSeries.getData().add(new XYChart.Data<>(xTick, 0.0));
-        txSeries.getData().add(new XYChart.Data<>(xTick, 0.0));
+        if (interfacesRed != null) {
+            for (oshi.hardware.NetworkIF net : interfacesRed) {
+                net.updateAttributes();
+                totalBytesRxActual += net.getBytesRecv();
+                totalBytesTxActual += net.getBytesSent();
+            }
+        }
+
+        long timestampActual = System.currentTimeMillis();
+        double deltaTiempoSegundos = (timestampActual - timestampAnterior) / 1000.0;
+        if (deltaTiempoSegundos <= 0) {
+            deltaTiempoSegundos = 2.0;
+        }
+
+        double velocidadDescargaMB = ((totalBytesRxActual - totalBytesRxAnterior) / deltaTiempoSegundos) / (1024.0 * 1024.0);
+        double velocidadSubidaMB = ((totalBytesTxActual - totalBytesTxAnterior) / deltaTiempoSegundos) / (1024.0 * 1024.0);
+
+        if (velocidadDescargaMB < 0) {
+            velocidadDescargaMB = 0.0;
+        }
+        if (velocidadSubidaMB < 0) {
+            velocidadSubidaMB = 0.0;
+        }
+
+        totalBytesRxAnterior = totalBytesRxActual;
+        totalBytesTxAnterior = totalBytesTxActual;
+        timestampAnterior = timestampActual;
+
+        lblNetDown.setText(String.format("%.1f MB/s ⬇", velocidadDescargaMB));
+        lblNetUp.setText(String.format("%.1f MB/s ⬆", velocidadSubidaMB));
+
+        rxSeries.getData().add(new XYChart.Data<>(xTick, velocidadDescargaMB));
+        txSeries.getData().add(new XYChart.Data<>(xTick, velocidadSubidaMB));
+
         if (rxSeries.getData().size() > 20) {
             rxSeries.getData().remove(0);
             txSeries.getData().remove(0);
@@ -198,41 +325,49 @@ public class PerformanceController implements Initializable, Controllable {
         xTick++;
     }
 
-    // 🚀 CORREGIDO: Cambiado de stop() a shutdown() para cumplir estrictamente con la interfaz Controllable
+    /**
+     * Convierte los segundos que entrega OSHI a formato de texto "HH:mm:ss"
+     * para mostrarlo de forma elegante en la interfaz gráfica.
+     */
+    private String formatearTiempo(long segundos) {
+        return String.format("%02d:%02d:%02d",
+                segundos / 3600,
+                (segundos % 3600) / 60,
+                segundos % 60);
+    }
+
+    /**
+     * Convierte un String con formato "HH:mm:ss" de vuelta a segundos totales.
+     * Se utiliza para comparar los procesos duplicados y conservar el que tenga
+     * mayor tiempo activo.
+     */
+    private long parsearTiempoASegundos(String tiempo) {
+        if (tiempo == null || !tiempo.contains(":")) {
+            return 0;
+        }
+        try {
+            String[] partes = tiempo.split(":");
+            long horas = Long.parseLong(partes[0]);
+            long minutos = Long.parseLong(partes[1]);
+            long segundos = Long.parseLong(partes[2]);
+            return (horas * 3600) + (minutos * 60) + segundos;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     @Override
     public void shutdown() {
         if (timer != null) {
             timer.cancel();
         }
     }
-
     // =========================================================================
-    // CLASES DE SOPORTE PARA CELDAS ADAPTADAS A OSPROCESS
+    // CLASES DE SOPORTE PARA CELDAS ADAPTADAS A MONITOREDAPPROW
     // =========================================================================
-    private static class TiempoActivoCell extends javafx.scene.control.TableCell<OSProcess, Long> {
+    // 🚀 CORREGIDO: Evalúa el tipo de App guardada en BD en vez de estados del sistema operativo
 
-        @Override
-        protected void updateItem(Long item, boolean empty) {
-            super.updateItem(item, empty);
-            if (empty || item == null) {
-                setText(null);
-            } else {
-                long s = item / 1000;
-                long h = s / 3600;
-                long m = (s % 3600) / 60;
-                long sec = s % 60;
-                if (h > 0) {
-                    setText(String.format("%dh %dm", h, m));
-                } else if (m > 0) {
-                    setText(String.format("%dm %ds", m, sec));
-                } else {
-                    setText(String.format("%ds", sec));
-                }
-            }
-        }
-    }
-
-    private static class CategoriaBadgeCell extends javafx.scene.control.TableCell<OSProcess, String> {
+    private static class CategoriaBadgeCell extends javafx.scene.control.TableCell<MonitoredAppRow, String> {
 
         @Override
         protected void updateItem(String item, boolean empty) {
@@ -242,8 +377,9 @@ public class PerformanceController implements Initializable, Controllable {
                 setText(null);
             } else {
                 Label badge = new Label(item);
-                // Ajustado para evaluar los estados del enum nativo de OSHI (RUNNING, SLEEPING, WAITING, etc.)
-                if (item.equalsIgnoreCase("RUNNING")) {
+                badge.getStyleClass().clear();
+
+                if (item.equalsIgnoreCase("WORK")) {
                     badge.getStyleClass().add("badge-work");
                 } else {
                     badge.getStyleClass().add("badge-distraction");
@@ -254,17 +390,16 @@ public class PerformanceController implements Initializable, Controllable {
         }
     }
 
-    private static class ProgressBarCell extends javafx.scene.control.TableCell<OSProcess, Double> {
+    // 🚀 CORREGIDO: Pinta barras Cian o Naranja adaptándose en tiempo real a la categoría de la fila
+    private static class ProgressBarCell extends javafx.scene.control.TableCell<MonitoredAppRow, Double> {
 
         private final HBox container = new HBox(8);
         private final Label text = new Label();
         private final ProgressBar bar = new ProgressBar();
 
-        public ProgressBarCell(String barClass) {
-            bar.getStyleClass().addAll("micro-bar", barClass);
+        public ProgressBarCell() {
+            bar.getStyleClass().add("micro-bar");
             bar.setPrefWidth(80);
-
-            // 🌟 SE MANTIENE EL INLINE STYLE ELIMINADO PARA PASAR EL CONTROL TOTAL AL CSS VUESTRO
             text.setPrefWidth(45);
 
             container.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
@@ -278,23 +413,63 @@ public class PerformanceController implements Initializable, Controllable {
                 setGraphic(null);
                 setText(null);
             } else {
-                OSProcess p = getTableRow() != null ? getTableRow().getItem() : null;
+                MonitoredAppRow rowApp = getTableRow() != null ? getTableRow().getItem() : null;
 
+                // Reseteamos clases de color dinámicas para evitar bugs visuales por reciclaje de celdas
                 bar.getStyleClass().removeAll("micro-bar-cyan", "micro-bar-orange");
 
-                if (p != null && p.getState() != null && p.getState().name().equalsIgnoreCase("RUNNING")) {
+                if (rowApp != null && "WORK".equalsIgnoreCase(rowApp.getType())) {
                     bar.getStyleClass().add("micro-bar-cyan");
                 } else {
                     bar.getStyleClass().add("micro-bar-orange");
                 }
 
-                // Normalizar valor para la ProgressBar de JavaFX (acepta de 0.0 a 1.0)
                 double progresoFraccion = item / 100.0;
                 bar.setProgress(Math.min(1.0, Math.max(0.0, progresoFraccion)));
-                
+
                 text.setText(String.format("%.1f%%", item));
                 setGraphic(container);
             }
+        }
+    }
+
+    // =========================================================================
+    // DTO O MODELO DE REPRESENTACIÓN DE FILA PARA LA TABLA
+    // =========================================================================
+    public static class MonitoredAppRow {
+
+        private final String name;
+        private final String type;
+        private final double cpuUsage;
+        private final double memoryUsage;
+        private final String activeTime;
+
+        public MonitoredAppRow(String name, String type, double cpuUsage, double memoryUsage, String activeTime) {
+            this.name = name;
+            this.type = type;
+            this.cpuUsage = cpuUsage;
+            this.memoryUsage = memoryUsage;
+            this.activeTime = activeTime;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public double getCpuUsage() {
+            return cpuUsage;
+        }
+
+        public double getMemoryUsage() {
+            return memoryUsage;
+        }
+
+        public String getActiveTime() {
+            return activeTime;
         }
     }
 }

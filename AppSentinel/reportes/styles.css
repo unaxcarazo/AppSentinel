@@ -1,0 +1,264 @@
+/* ===== ESTILO TERMINAL INTERACTIVO CON GRÁFICOS INTEGRADOS V5 ===== */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --bg-main: #050505;
+    --bg-card-grad: linear-gradient(135deg, #121212 0%, #080808 100%);
+    --bg-card-hover-grad: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+    
+    --border-card: #202020;
+    --border-separator: #141414;
+    
+    /* Textos */
+    --text-pure: #ffffff;
+    --text-muted: #848484;
+    
+    /* Colores Ciberpunk / Terminal */
+    --color-productive: #00e676;  
+    --color-distractions: #ff1744; 
+    --color-neutral: #ffd54f;     
+    --color-background: #4fc3f7;  
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--text-pure);
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    padding: 30px 25px;
+    min-height: 100vh;
+    letter-spacing: -0.01em;
+}
+
+.container {
+    max-width: 1300px;
+    margin: 0 auto;
+}
+
+/* ===== ENCABEZADO ===== */
+.main-header {
+    margin-bottom: 25px;
+}
+
+.main-header h1 {
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--text-pure);
+    margin-bottom: 12px;
+}
+
+.main-header .meta-info {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.main-header .meta-info span { color: var(--text-pure); }
+.main-header .meta-info .separator { margin: 0 6px; color: var(--text-muted); }
+
+.header-line {
+    height: 1px;
+    background-color: var(--border-separator);
+    margin-top: 18px;
+}
+
+/* ===== NUEVA SECCIÓN: GRÁFICO DE DISTRIBUCIÓN DE BARRAS TERMINAL ===== */
+.distribution-section {
+    margin-bottom: 25px;
+}
+
+.distribution-card {
+    background: var(--bg-card-grad);
+    border: 1px solid var(--border-card);
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow: 
+        inset 1px 1px 1px rgba(255, 255, 255, 0.04),
+        0 6px 15px rgba(0,0,0,0.6);
+}
+
+.dist-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: bold;
+    margin-bottom: 14px;
+    letter-spacing: 0.5px;
+}
+
+.dist-title { color: var(--text-pure); }
+.dist-percentage { color: var(--text-muted); }
+
+/* Barra de progreso combinada */
+.progress-timeline-bar {
+    display: flex;
+    height: 14px;
+    background-color: #111;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    border: 1px solid #1a1a1a;
+}
+
+.bar-segment {
+    height: 100%;
+    transition: opacity 0.2s;
+    cursor: pointer;
+}
+
+.bar-segment:hover {
+    opacity: 0.85;
+}
+
+.seg-productive { background-color: var(--color-productive); }
+.seg-distractions { background-color: var(--color-distractions); }
+.seg-neutral { background-color: var(--color-neutral); }
+.seg-background { background-color: var(--color-background); }
+
+/* Leyenda */
+.dist-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.legend-item {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    display: inline-block;
+}
+
+.dot-productive { background-color: var(--color-productive); }
+.dot-distractions { background-color: var(--color-distractions); }
+.dot-neutral { background-color: var(--color-neutral); }
+.dot-background { background-color: var(--color-background); }
+
+
+/* ===== TARJETAS DE CONTADORES CON RELIEVE ===== */
+.counters-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 30px;
+}
+
+.card-counter {
+    background: var(--bg-card-grad);
+    border: 1px solid var(--border-card);
+    border-radius: 10px;
+    padding: 18px 20px;
+    flex: 1;
+    min-width: 160px;
+    cursor: pointer;
+    box-shadow: 
+        inset 1px 1px 1px rgba(255, 255, 255, 0.06),
+        inset -1px -1px 1px rgba(0, 0, 0, 0.6),
+        0 4px 10px rgba(0, 0, 0, 0.5);
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.card-counter:hover {
+    transform: translateY(-3px);
+    background: var(--bg-card-hover-grad);
+    box-shadow: inset 1px 1px 2px rgba(255, 255, 255, 0.1), 0 8px 16px rgba(0, 0, 0, 0.7);
+}
+
+.card-counter.highlight-productive-card { border: 1.5px solid var(--color-productive); }
+.card-counter.highlight-productive-card:hover { box-shadow: 0 6px 18px rgba(0, 230, 118, 0.2); }
+
+.card-counter.highlight-distractions-card { border: 1.5px solid var(--color-distractions); }
+.card-counter.highlight-distractions-card:hover { box-shadow: 0 6px 18px rgba(255, 23, 68, 0.2); }
+
+.counter-label { display: block; font-size: 10.5px; font-weight: 700; margin-bottom: 12px; }
+.label-total { color: var(--text-muted); }
+.label-productive { color: var(--color-productive); }
+.label-distractions { color: var(--color-distractions); }
+.label-neutral { color: var(--color-neutral); }
+.label-background { color: var(--color-background); }
+.label-count { color: #e65100; }
+
+.counter-value { font-size: 26px; color: var(--text-pure); }
+
+/* ===== GRID DE LISTAS CON MINI GRÁFICOS HORIZONTALES ===== */
+.lists-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(550px, 1fr));
+    gap: 24px;
+}
+
+@media (max-width: 650px) { .lists-grid { grid-template-columns: 1fr; } }
+
+.card-list {
+    background: var(--bg-card-grad);
+    border: 1px solid var(--border-card);
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: inset 1px 1px 1px rgba(255,255,255,0.04), 0 6px 14px rgba(0,0,0,0.5);
+    transition: transform 0.2s;
+}
+
+.card-list:hover { transform: translateY(-3px); }
+.card-list.highlighted-box-productive { border: 2px solid var(--color-productive); }
+.card-list.highlighted-box-distractions { border: 2px solid var(--color-distractions); }
+
+.list-title { font-size: 11.5px; font-weight: 700; margin-bottom: 20px; letter-spacing: 0.5px;}
+.title-productive { color: var(--color-productive); }
+.title-distractions { color: var(--color-distractions); }
+.title-neutral { color: var(--color-neutral); }
+.title-background { color: var(--color-background); }
+
+/* FILAS DE APLICACIÓN CON DISEÑO VERTICAL (Texto arriba, Barra abajo) */
+.app-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+
+.app-item-vertical {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-separator);
+}
+
+.app-item-vertical:last-child { border-bottom: none; }
+
+.app-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.app-index { color: var(--text-muted); margin-right: 6px; }
+.app-name { color: var(--text-pure); }
+.app-time { color: var(--text-pure); font-weight: 500; }
+
+/* Micro-barras de progreso de rendimiento por aplicación */
+.app-mini-bar {
+    width: 100%;
+    height: 4px;
+    background-color: #121212;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.mini-fill {
+    height: 100%;
+    border-radius: 2px;
+}
+
+.mini-fill.fill-productive { background-color: var(--color-productive); }
+.mini-fill.fill-distractions { background-color: var(--color-distractions); }
+.mini-fill.fill-neutral { background-color: var(--color-neutral); }
+.mini-fill.fill-background { background-color: var(--color-background); }

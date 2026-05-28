@@ -24,18 +24,16 @@ import java.util.regex.Pattern;
 /**
  * TimeTrackingService: Orquestador principal del seguimiento de actividad.
  *
- * FIX UPSERT (Opción A): Una sola fila por app por día en PostgreSQL.
- * - Reemplaza INSERT individual por INSERT ... ON CONFLICT DO UPDATE.
- * - Cada ciclo de escáner acumula el delta de duración en la BD.
- * - Elimina la multiplicidad de registros: 360 INSERTs/hora → 1 fila por app.
- * - Las vistas leen directo sin GROUP BY.
+ * FIX: Añadido método actualizarTabId() para manejar cambio de pestaña
+ * dentro del mismo dominio (misma sesión, tabId diferente).
+ * WebSocketAdapter detecta cambio de pestaña y envía evento al dominio;
+ * TimeTrackingService actualiza el tabId sin reiniciar tiempo acumulado.
  *
  * REGLAS DE NEGOCIO:
  * 1. TODAS las apps detectadas tienen un reloj de existencia continuo (sesiones).
  * 2. Solo la app con FOCO ACTIVO puede ser evaluada para bloqueo.
  * 3. Las apps en segundo plano se registran como "BACKGROUND_X" → nunca se bloquean.
- * 4. Si el usuario está AUSENTE (sin reportes en SEGUNDOS_AUSENCIA_USUARIO), los relojes se congelan.
- * 5. El bloqueo se dispara solo cuando una DISTRACCION supera segundosBloqueo con foco activo.
+ * 4. El bloqueo se dispara solo cuando una DISTRACCION supera segundosBloqueo con foco activo.
  */
 public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoActivoPort {
 
@@ -65,9 +63,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
     private final Object lockLimpieza = new Object();
 
-    private static final int GRACIA_ESTRICTO_SEG      = 10;
-    private static final int SEGUNDOS_AUSENCIA_USUARIO = 300;
-    private static final int SEGUNDOS_SIN_RASTRO       = 120;
+    private static final int GRACIA_ESTRICTO_SEG = 10;
+    private static final int SEGUNDOS_SIN_RASTRO = 120;
 
     private static final Pattern PROTOCOLO_WWW = Pattern.compile("https?://(www\\.)?");
     private static final Pattern PATH_QUERY    = Pattern.compile("/.*");
@@ -77,8 +74,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         "chrome", "msedge", "firefox", "opera", "brave", "vivaldi",
         "chromium", "safari", "arc", "electron"
     );
-
-    private volatile LocalDateTime ultimoInputUsuario = LocalDateTime.now();
 
     public TimeTrackingService(DistractionDetector detector,
                                RegistroRepositoryPort repository,
@@ -98,11 +93,11 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         this.modoEstricto    = modoEstricto;
         this.usuario         = usuario;
 
-        scheduler.scheduleAtFixedRate(this::cicloDeMantenimiento, 10, 10, TimeUnit.SECONDS);
+        LOGGER.log(Level.INFO,
+            "TimeTrackingService iniciado — usuario: {0} | Modo: {1} | Persistencia UPSERT: una fila por app por día",
+            new Object[]{usuario, modoEstricto ? "ESTRICTO" : "NORMAL"});
 
-        System.out.println("TimeTrackingService iniciado — usuario: " + usuario);
-        System.out.println("   Modo: " + (modoEstricto ? "ESTRICTO" : "NORMAL"));
-        System.out.println("   Persistencia UPSERT: una fila por app por día.");
+        scheduler.scheduleAtFixedRate(this::cicloDeMantenimiento, 10, 10, TimeUnit.SECONDS);
     }
 
     // -------------------------------------------------------------------------
@@ -116,23 +111,132 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     
     @Override
     public void reportarActividadSistema(String proceso, String titulo, int pid) {
-        ultimoInputUsuario = LocalDateTime.now();
         procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso), titulo, -1, pid);
     }
     // ===============================================
     
     @Override
-    public void reportarEventoNavegador(String url, String titulo, int tabId) {
-        ultimoInputUsuario = LocalDateTime.now();
-        String dominio = extraerDominio(url);
-        procesarActividad(
-            "WEB|" + dominio,
-            "Web: " + (titulo != null ? titulo : dominio),
-            detector.clasificarUrl(url),
-            dominio,
-            tabId,
-            -1
-        );
+public void reportarEventoNavegador(String url, String titulo, int tabId) {
+    // url ya viene recortada por WebSocketAdapter (dominio sin path/query)
+    // extraerDominio() es idempotente para seguridad defensiva
+    String dominio = extraerDominio(url);
+    
+    String nombreLegible;
+    String tituloLimpio = (titulo != null) ? titulo.trim() : "";
+
+    if (!tituloLimpio.isEmpty()) {
+        // 1. DETECCIÓN DE URL FALSA PRIMERO (Sobre el texto original completo e intacto)
+        boolean esUrlFalsa = tituloLimpio.startsWith("http://") 
+                || tituloLimpio.startsWith("https://") 
+                || tituloLimpio.startsWith("www.")
+                || tituloLimpio.startsWith("file://")
+                || tituloLimpio.contains("://")
+                || tituloLimpio.equalsIgnoreCase(dominio)
+                || tituloLimpio.equalsIgnoreCase(url)
+                || tituloLimpio.matches(".*\\.[a-z]{2,6}(/|\\?).*");
+
+        if (esUrlFalsa) {
+            nombreLegible = "Web: " + dominio;
+        } else {
+            // 2. TRUNCADO DEFENSIVO SÓLO EN EL FLUJO DE NOMBRE LEGIBLE
+            final int MAX_TITULO_LEN = 500;
+            if (tituloLimpio.length() > MAX_TITULO_LEN) {
+                String originalLen = String.valueOf(tituloLimpio.length());
+                tituloLimpio = tituloLimpio.substring(0, MAX_TITULO_LEN);
+                LOGGER.log(Level.WARNING, 
+                    "[TITULO] Truncado de {0} a {1} caracteres para {2}",
+                    new Object[]{originalLen, MAX_TITULO_LEN, dominio});
+            }
+
+            // Sanitizar caracteres de control sobre la cadena final acotada
+            nombreLegible = "Web: " + tituloLimpio.replaceAll("[\\p{Cntrl}]", "").trim();
+        }
+    } else {
+        nombreLegible = "Web: " + dominio;
+    }
+    
+    procesarActividad(
+        "WEB|" + dominio,
+        nombreLegible,
+        detector.clasificarUrl(url), // url ya recortada, clasificarUrl es idempotente
+        dominio,
+        tabId,
+        -1
+    );
+}
+
+
+
+
+    // -------------------------------------------------------------------------
+    // NUEVO: Actualizar tabId en sesión existente (cambio de pestaña, mismo dominio)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Actualiza el tabId de una sesión activa existente sin reiniciar
+     * el tiempo acumulado ni crear una nueva sesión.
+     *
+     * Invocado por WebSocketAdapter cuando detecta que el usuario navegó
+     * al mismo dominio en una pestaña diferente (mismo dominio, tabId diferente).
+     *
+     * Si la sesión no existe o no está activa, no hace nada (el evento
+     * normal de reportarEventoNavegador() manejará la creación).
+     *
+     * @param clave Clave de la sesión (ej: "WEB|youtube.com")
+     * @param nuevoTabId Nuevo identificador de pestaña del navegador
+     */
+    public void actualizarTabId(String clave, int nuevoTabId) {
+        if (nuevoTabId <= 0) return;
+
+        synchronized (lockLimpieza) {
+            SeguimientoActividad seg = activas.get(clave);
+            if (seg != null && seg.tabId != nuevoTabId) {
+                int tabIdAnterior = seg.tabId;
+                seg.tabId = nuevoTabId;
+                seg.ultimaVezVista = LocalDateTime.now();
+                LOGGER.log(Level.FINE,
+                    "[TABID] Actualizado {0}: {1} → {2} (misma sesión, tiempo preservado)",
+                    new Object[]{clave, tabIdAnterior, nuevoTabId});
+            }
+        }
+    }
+    
+        /**
+     * Sincroniza la categoría de una sesión activa con el valor actual de la BD.
+     *
+     * Invocado por AppBlockerController cuando el usuario reclasifica una app.
+     * Si la app tiene el foco activo o existe en sesiones, actualiza la categoría
+     * inmediatamente para que el próximo ciclo de evaluación use la nueva clasificación.
+     *
+     * @param clave Clave de sesión (ej: "SYS|discord" o "WEB|youtube.com")
+     * @param nuevaCategoria Categoría del dominio (PRODUCTIVO, NEUTRAL, DISTRACCION)
+     */
+    public void sincronizarCategoria(String clave, String nuevaCategoria) {
+        if (clave == null || nuevaCategoria == null) return;
+
+        synchronized (lockLimpieza) {
+            // Actualizar sesión de existencia (si existe)
+            SesionExistencia sesion = sesiones.get(clave);
+            if (sesion != null && !nuevaCategoria.equals(sesion.categoria)) {
+                sesion.categoria = nuevaCategoria;
+                LOGGER.log(Level.INFO,
+                    "[RECLASIFICACION] Sesión de existencia actualizada: {0} → {1}",
+                    new Object[]{clave, nuevaCategoria});
+            }
+
+            // Actualizar foco activo (si existe)
+            SeguimientoActividad seg = activas.get(clave);
+            if (seg != null && !nuevaCategoria.equals(seg.categoria)) {
+                seg.categoria = nuevaCategoria;
+                // Resetear estado de distracción si cambia de DISTRACCION a no-DISTRACCION
+                if (!Categoria.DISTRACCION.equals(nuevaCategoria)) {
+                    seg.estado = EstadoDistraccion.INICIADA;
+                }
+                LOGGER.log(Level.INFO,
+                    "[RECLASIFICACION] Foco activo actualizado: {0} → {1}",
+                    new Object[]{clave, nuevaCategoria});
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -194,7 +298,8 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
             // --- Sesión de existencia ---
             sesiones.computeIfAbsent(clave, k -> {
-                System.out.println("[EXISTENCIA] Nueva app detectada: " + nombre + " (" + clave + ")");
+                LOGGER.log(Level.FINE, "[EXISTENCIA] Nueva app detectada: {0} ({1})",
+                    new Object[]{nombre, clave});
                 return new SesionExistencia(clave, nombre, categoria, ahora);
             });
 
@@ -230,14 +335,16 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                         sesionWeb.ultimaVezVista = ahora;
                     }
 
-                    System.out.println("[FOCO] Navegador (" + nombre + ") en primer plano. Web mantiene foco.");
+                    LOGGER.log(Level.FINE,
+                        "[FOCO] Navegador ({0}) en primer plano. Web mantiene foco.",
+                        nombre);
                     return;
                 }
 
                 // Nueva app toma el foco
                 activas.clear();
                 activas.put(clave, new SeguimientoActividad(nombre, detalle, categoria, ahora, tabId, pid));
-                System.out.println("[FOCO] " + nombre);
+                LOGGER.log(Level.FINE, "[FOCO] {0}", nombre);
 
             } else {
                 SeguimientoActividad seg = activas.get(clave);
@@ -254,14 +361,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     // Flush del foco activo (UPSERT — acumula en una sola fila)
     // -------------------------------------------------------------------------
 
-    /**
-     * Flushea el tiempo acumulado del foco activo a la BD via UPSERT.
-     * Se invoca cuando la app pierde el foco (cambio de ventana/pestaña)
-     * o al cerrar la sesión (purgar / finalizar).
-     *
-     * FIX UPSERT: En lugar de INSERT individual, usa guardarOActualizar()
-     * que acumula duración en una sola fila por app por día.
-     */
     private void flushFocoActivo(LocalDateTime ahora) {
         if (activas.isEmpty()) return;
 
@@ -277,10 +376,10 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
 
         if (totalAFlush > 0) {
             acumularChunkFoco(clave, seg, totalAFlush, ahora);
-            System.out.println("[FLUSH] " + seg.nombre + " → " + fmt(totalAFlush) + " acumulados via UPSERT");
+            LOGGER.log(Level.FINE, "[FLUSH] {0} → {1} acumulados via UPSERT",
+                new Object[]{seg.nombre, fmt(totalAFlush)});
         }
 
-        // Resetear acumuladores (la sesión de existencia sigue viva)
         seg.segundosAcumulados = 0;
         seg.inicio = ahora;
     }
@@ -290,19 +389,14 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     // -------------------------------------------------------------------------
 
     private void cicloDeMantenimiento() {
-        synchronized (lockLimpieza) {
-            if (detectarAusenciaUsuario()) {
-                LOGGER.log(Level.FINE, "[AUSENCIA] Usuario ausente. Relojes congelados.");
-            } else {
+        try {
+            synchronized (lockLimpieza) {
                 avanzarRelojesYVerificar();
+                purgarSesionesMuertas();
             }
-            purgarSesionesMuertas();
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "[MANTENIMIENTO] Error en ciclo de mantenimiento", e);
         }
-    }
-
-    private boolean detectarAusenciaUsuario() {
-        long segsDesdeUltimoInput = Duration.between(ultimoInputUsuario, LocalDateTime.now()).getSeconds();
-        return segsDesdeUltimoInput > SEGUNDOS_AUSENCIA_USUARIO;
     }
 
     private void avanzarRelojesYVerificar() {
@@ -347,10 +441,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     // Persistencia UPSERT
     // -------------------------------------------------------------------------
 
-    /**
-     * FIX UPSERT: Acumula duración de segundo plano en una sola fila por app.
-     * Usa repository.guardarOActualizar() en lugar de guardar().
-     */
     private void acumularChunkExistencia(SesionExistencia sesion, long segs, LocalDateTime ahora) {
         Registro reg = new Registro();
         reg.setUsuarioSistema(usuario);
@@ -362,10 +452,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         repository.guardarOActualizar(reg);
     }
 
-    /**
-     * FIX UPSERT: Acumula duración de foco activo en una sola fila por app.
-     * Usa repository.guardarOActualizar() en lugar de guardar().
-     */
     private void acumularChunkFoco(String clave, SeguimientoActividad seg,
                                     long segs, LocalDateTime ahora) {
         Registro reg = new Registro();
@@ -469,14 +555,12 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             SeguimientoActividad seg = activas.get(clave);
 
             if (seg != null) {
-                // App enfocada al purgar: flush acumulado antes de eliminar
                 long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
                 long totalAFlush = seg.segundosAcumulados + segsFoco;
                 if (totalAFlush > 0) {
                     acumularChunkFoco(clave, seg, totalAFlush, ahora);
                 }
             } else {
-                // App en segundo plano: acumula chunk via upsert
                 long segsDesdeInicio = Duration.between(sesion.inicio, ahora).getSeconds();
                 if (segsDesdeInicio > 0) {
                     acumularChunkExistencia(sesion, segsDesdeInicio, ahora);
@@ -484,7 +568,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             }
 
             clavesAEliminar.add(clave);
-            System.out.println("[MANTENIMIENTO] Proceso cerrado/desaparecido: " + sesion.nombre);
+            LOGGER.log(Level.FINE, "[MANTENIMIENTO] Proceso cerrado/desaparecido: {0}", sesion.nombre);
         }
 
         clavesAEliminar.forEach(sesiones::remove);
@@ -511,7 +595,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         synchronized (lockLimpieza) {
             LocalDateTime ahora = LocalDateTime.now();
 
-            // Flush de apps enfocadas (acumulados en memoria)
             for (Map.Entry<String, SeguimientoActividad> entry : activas.entrySet()) {
                 SeguimientoActividad seg = entry.getValue();
                 long segsFoco = Duration.between(seg.inicio, ahora).getSeconds();
@@ -521,7 +604,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
                 }
             }
 
-            // Flush de apps en segundo plano
             for (SesionExistencia sesion : sesiones.values()) {
                 if (!activas.containsKey(sesion.clave)) {
                     long segs = Duration.between(sesion.inicio, ahora).getSeconds();
@@ -532,7 +614,7 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
             }
         }
 
-        System.out.println("[FIN] Seguimiento finalizado — flush completo realizado via UPSERT.");
+        LOGGER.log(Level.INFO, "[FIN] Seguimiento finalizado — flush completo realizado via UPSERT.");
     }
 
     public void setKiller(KillerPort killer) {
@@ -568,8 +650,6 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
         int tabId;
         int pid;
         EstadoDistraccion estado = EstadoDistraccion.INICIADA;
-
-        // Acumulador en memoria para anti-saturación
         long segundosAcumulados = 0;
 
         SeguimientoActividad(String nombre, String detalle, String categoria,

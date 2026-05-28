@@ -97,8 +97,6 @@ public class TestReporteIntegracion {
 
         System.out.println("\n[INFO] Informe generado en: " + rutaArchivo.toAbsolutePath());
 
-        Files.deleteIfExists(rutaArchivo);
-        System.out.println("[INFO] Archivo de prueba eliminado.");
 
         System.out.println("\n=== TODAS LAS VALIDACIONES PASARON ===");
     }

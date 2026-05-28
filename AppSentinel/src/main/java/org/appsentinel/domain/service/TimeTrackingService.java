@@ -109,17 +109,57 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     }
 
     @Override
-    public void reportarEventoNavegador(String url, String titulo, int tabId) {
-        String dominio = extraerDominio(url);
-        procesarActividad(
-            "WEB|" + dominio,
-            "Web: " + (titulo != null ? titulo : dominio),
-            detector.clasificarUrl(url),
-            dominio,
-            tabId,
-            -1
-        );
+public void reportarEventoNavegador(String url, String titulo, int tabId) {
+    // url ya viene recortada por WebSocketAdapter (dominio sin path/query)
+    // extraerDominio() es idempotente para seguridad defensiva
+    String dominio = extraerDominio(url);
+    
+    String nombreLegible;
+    String tituloLimpio = (titulo != null) ? titulo.trim() : "";
+
+    if (!tituloLimpio.isEmpty()) {
+        // 1. DETECCIÓN DE URL FALSA PRIMERO (Sobre el texto original completo e intacto)
+        boolean esUrlFalsa = tituloLimpio.startsWith("http://") 
+                || tituloLimpio.startsWith("https://") 
+                || tituloLimpio.startsWith("www.")
+                || tituloLimpio.startsWith("file://")
+                || tituloLimpio.contains("://")
+                || tituloLimpio.equalsIgnoreCase(dominio)
+                || tituloLimpio.equalsIgnoreCase(url)
+                || tituloLimpio.matches(".*\\.[a-z]{2,6}(/|\\?).*");
+
+        if (esUrlFalsa) {
+            nombreLegible = "Web: " + dominio;
+        } else {
+            // 2. TRUNCADO DEFENSIVO SÓLO EN EL FLUJO DE NOMBRE LEGIBLE
+            final int MAX_TITULO_LEN = 500;
+            if (tituloLimpio.length() > MAX_TITULO_LEN) {
+                String originalLen = String.valueOf(tituloLimpio.length());
+                tituloLimpio = tituloLimpio.substring(0, MAX_TITULO_LEN);
+                LOGGER.log(Level.WARNING, 
+                    "[TITULO] Truncado de {0} a {1} caracteres para {2}",
+                    new Object[]{originalLen, MAX_TITULO_LEN, dominio});
+            }
+
+            // Sanitizar caracteres de control sobre la cadena final acotada
+            nombreLegible = "Web: " + tituloLimpio.replaceAll("[\\p{Cntrl}]", "").trim();
+        }
+    } else {
+        nombreLegible = "Web: " + dominio;
     }
+    
+    procesarActividad(
+        "WEB|" + dominio,
+        nombreLegible,
+        detector.clasificarUrl(url), // url ya recortada, clasificarUrl es idempotente
+        dominio,
+        tabId,
+        -1
+    );
+}
+
+
+
 
     // -------------------------------------------------------------------------
     // NUEVO: Actualizar tabId en sesión existente (cambio de pestaña, mismo dominio)

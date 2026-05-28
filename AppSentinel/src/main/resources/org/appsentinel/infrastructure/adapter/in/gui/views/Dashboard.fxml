@@ -29,13 +29,7 @@
                         <Label styleClass="dashboard-subtitle" text="Session metrics and performance overview." />
                     </VBox>
       
-                    <Button fx:id="btnDownloadReport" minWidth="-Infinity" onAction="#handleDownloadReport" styleClass="button-report">
-                        <graphic>
-                            <Label style="-fx-text-fill: white; -fx-padding: 0 5 0 0;" text="📥" />
-                        </graphic>
-                        <text>Descargar informe</text>
-                    </Button>
-      
+                    
                     <HBox alignment="CENTER" minWidth="-Infinity" spacing="10" styleClass="date-selector-container">
                         <Button fx:id="btnAtras" styleClass="button-date-nav" text="&lt;" />
                         <HBox alignment="CENTER" spacing="8" styleClass="date-display">

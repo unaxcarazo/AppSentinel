@@ -43,7 +43,7 @@ public class DashboardController implements Initializable, Controllable {
     private static final long MIN_MS_ENTRE_ACTUALIZACIONES = 2000; // 2 segundos
 
     private ScheduledExecutorService uiScheduler;
-    private RegistroRepositoryPort repository;
+    private RegistroRepositoryPort repo;
     private String usuarioActual;
 
     private LocalDate fechaConsultada = LocalDate.now();
@@ -145,7 +145,7 @@ public class DashboardController implements Initializable, Controllable {
 
     @Override
     public void init(AppContext ctx) {
-        this.repository = ctx.repositorio();
+        this.repo = ctx.repo();
         this.usuarioActual = System.getProperty("user.name");
         if (this.usuarioActual == null) {
             this.usuarioActual = "DAW1";
@@ -153,18 +153,7 @@ public class DashboardController implements Initializable, Controllable {
         recargarDatosDesdeBd();
     }
 
-    @FXML
-    private void handleDownloadReport() {
-        try {
-            File htmlFile = new File("DelayLog.html");
-            if (htmlFile.exists()) {
-                Desktop.getDesktop().browse(htmlFile.toURI());
-            }
-        } catch (IOException e) {
-            System.err.println("Error al abrir reporte: " + e.getMessage());
-        }
-    }
-
+   
     private String sanitizarTextoLargo(String texto, int maxCaracteres) {
         if (texto == null) {
             return "";
@@ -359,8 +348,8 @@ public class DashboardController implements Initializable, Controllable {
             lblFecha.setText(fechaConsultada.format(formatter));
         }
 
-        if (repository != null && usuarioActual != null) {
-            List<Registro> registrosDelDia = repository.findByUsuarioAndFecha(usuarioActual, fechaConsultada);
+        if (repo != null && usuarioActual != null) {
+            List<Registro> registrosDelDia = repo.findByUsuarioAndFecha(usuarioActual, fechaConsultada);
 
             List<Registro> topTrabajo = registrosDelDia.stream()
                     .filter(r -> r != null && "PRODUCTIVO".equalsIgnoreCase(r.getCategoria() != null ? r.getCategoria().trim() : ""))
@@ -598,12 +587,12 @@ public class DashboardController implements Initializable, Controllable {
     }
 
     private void recargarDatosDesdeBd() {
-        if (repository != null && usuarioActual != null) {
+        if (repo != null && usuarioActual != null) {
             System.out.println("Cargando información optimizada desde la base de datos...");
 
-            List<Registro> topTrabajo = repository.obtenerTopTrabajo(usuarioActual, 5);
-            List<Registro> topDistracciones = repository.obtenerTopDistracciones(usuarioActual, 5);
-            List<Registro> actividad = repository.obtenerActividadHoy(usuarioActual);
+            List<Registro> topTrabajo = repo.obtenerTopTrabajo(usuarioActual, 5);
+            List<Registro> topDistracciones = repo.obtenerTopDistracciones(usuarioActual, 5);
+            List<Registro> actividad = repo.obtenerActividadHoy(usuarioActual);
 
             if ((topTrabajo == null || topTrabajo.isEmpty()) && actividad != null && !actividad.isEmpty()) {
                 topTrabajo = actividad.stream()

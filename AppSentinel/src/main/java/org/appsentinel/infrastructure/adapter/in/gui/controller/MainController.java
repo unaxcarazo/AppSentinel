@@ -8,7 +8,6 @@ import javafx.scene.layout.StackPane; // 🔄 Mantenemos el StackPane líquido q
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javafx.scene.control.Button;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
 
 /**
@@ -25,8 +24,6 @@ public class MainController {
 
     private AppContext ctx;
 
-    @FXML
-    private Button btnDeepFocus;
 
     @FXML
     public void initialize() {
@@ -72,10 +69,6 @@ public class MainController {
         cargarVista("UsageHistory");
     }
 
-    @FXML
-    public void onDeepFocus() {
-        cargarVista("DeepFocus");
-    } // Ajustar si es vista o acción directa
 
     // =========================================================================
     // DESPACHADOR DINÁMICO DE PANTALLAS (MÉTODO NÚCLEO POLIMÓRFICO)

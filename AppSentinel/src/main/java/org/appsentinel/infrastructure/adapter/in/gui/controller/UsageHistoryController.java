@@ -93,7 +93,7 @@ public class UsageHistoryController implements Initializable, Controllable {
     // -------------------------------------------------------------------------
     @Override
     public void init(AppContext ctx) {
-        this.repositorio = ctx.repositorio();
+        this.repositorio = ctx.repo();
 
         recargarDesdeDb();
 

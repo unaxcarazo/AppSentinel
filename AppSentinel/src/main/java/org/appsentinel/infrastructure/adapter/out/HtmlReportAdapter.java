@@ -12,10 +12,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-<<<<<<< HEAD
-import java.util.LinkedHashMap;
-=======
->>>>>>> appV2
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;

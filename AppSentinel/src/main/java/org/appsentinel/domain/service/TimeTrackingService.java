@@ -193,6 +193,44 @@ public void reportarEventoNavegador(String url, String titulo, int tabId) {
             }
         }
     }
+    
+        /**
+     * Sincroniza la categoría de una sesión activa con el valor actual de la BD.
+     *
+     * Invocado por AppBlockerController cuando el usuario reclasifica una app.
+     * Si la app tiene el foco activo o existe en sesiones, actualiza la categoría
+     * inmediatamente para que el próximo ciclo de evaluación use la nueva clasificación.
+     *
+     * @param clave Clave de sesión (ej: "SYS|discord" o "WEB|youtube.com")
+     * @param nuevaCategoria Categoría del dominio (PRODUCTIVO, NEUTRAL, DISTRACCION)
+     */
+    public void sincronizarCategoria(String clave, String nuevaCategoria) {
+        if (clave == null || nuevaCategoria == null) return;
+
+        synchronized (lockLimpieza) {
+            // Actualizar sesión de existencia (si existe)
+            SesionExistencia sesion = sesiones.get(clave);
+            if (sesion != null && !nuevaCategoria.equals(sesion.categoria)) {
+                sesion.categoria = nuevaCategoria;
+                LOGGER.log(Level.INFO,
+                    "[RECLASIFICACION] Sesión de existencia actualizada: {0} → {1}",
+                    new Object[]{clave, nuevaCategoria});
+            }
+
+            // Actualizar foco activo (si existe)
+            SeguimientoActividad seg = activas.get(clave);
+            if (seg != null && !nuevaCategoria.equals(seg.categoria)) {
+                seg.categoria = nuevaCategoria;
+                // Resetear estado de distracción si cambia de DISTRACCION a no-DISTRACCION
+                if (!Categoria.DISTRACCION.equals(nuevaCategoria)) {
+                    seg.estado = EstadoDistraccion.INICIADA;
+                }
+                LOGGER.log(Level.INFO,
+                    "[RECLASIFICACION] Foco activo actualizado: {0} → {1}",
+                    new Object[]{clave, nuevaCategoria});
+            }
+        }
+    }
 
     // -------------------------------------------------------------------------
     // FocoActivoPort — consulta del estado actual de foco

@@ -98,7 +98,8 @@ public class AppWiring {
             rendimiento,
             trackingInstance,
             mantenimientoInstance,
-            reporteInstance
+            reporteInstance,
+            detector
         );
     }
 

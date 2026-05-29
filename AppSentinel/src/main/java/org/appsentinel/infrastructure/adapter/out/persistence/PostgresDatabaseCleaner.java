@@ -3,15 +3,16 @@ package org.appsentinel.infrastructure.adapter.out.persistence;
 import org.appsentinel.domain.port.out.DatabaseMaintenancePort;
 
 import java.sql.Connection;
-import java.sql.Statement;
+import java.sql.PreparedStatement;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
  * PostgresDatabaseCleaner: Adaptador de SALIDA para mantenimiento de BD.
  *
- * Implementa {@link DatabaseMaintenancePort} usando PostgreSQL nativo.
- * Responsabilidad única: ejecutar TRUNCATE sobre registros_actividad.
+ * FIX: Cambia TRUNCATE (borra TODO sin condición) por DELETE con filtro de fecha.
+ * Esto hace la limpieza idempotente: se puede ejecutar en cualquier momento
+ * y solo afecta datos de días anteriores, no el día en curso.
  */
 public class PostgresDatabaseCleaner implements DatabaseMaintenancePort {
 
@@ -19,13 +20,20 @@ public class PostgresDatabaseCleaner implements DatabaseMaintenancePort {
 
     @Override
     public void limpiarHistorialDiario() {
-        String sql = "TRUNCATE TABLE registros_actividad;";
+        // FIX: Solo borrar registros de días anteriores, no el día actual.
+        // El reporte HTML del día se genera al cierre; los datos de hoy deben persistir.
+        String sql = """
+            DELETE FROM registros_actividad
+            WHERE fecha_registro < CURRENT_DATE
+            """;
 
         try (Connection conn = DatabaseConnection.getConnection();
-             Statement stmt = conn.createStatement()) {
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
 
-            stmt.execute(sql);
-            LOGGER.log(Level.INFO, "[PERSISTENCIA] Tabla registros_actividad vaciada.");
+            int filas = stmt.executeUpdate();
+            LOGGER.log(Level.INFO,
+                "[PERSISTENCIA] Limpieza ejecutada: {0} registros de días anteriores eliminados.",
+                filas);
 
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "[ERROR] Fallo al limpiar historial diario", e);

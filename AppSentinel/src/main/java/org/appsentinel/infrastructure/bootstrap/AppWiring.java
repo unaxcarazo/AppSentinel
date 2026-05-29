@@ -49,10 +49,9 @@ public class AppWiring {
         JavaFXAlertAdapter          notificacion = new JavaFXAlertAdapter();
         OshiRendimientoAdapter      rendimiento  = new OshiRendimientoAdapter();
 
-        // ========== MANTENIMIENTO DIARIO ==========
+        // ========== MANTENIMIENTO AL ARRANCAR ==========
         PostgresDatabaseCleaner cleaner = new PostgresDatabaseCleaner();
         mantenimientoInstance = new MantenimientoDiarioService(cleaner);
-        mantenimientoInstance.iniciar();
 
         // ========== DOMINIO ==========
         DistractionDetector detector = new DistractionDetector(categorias);

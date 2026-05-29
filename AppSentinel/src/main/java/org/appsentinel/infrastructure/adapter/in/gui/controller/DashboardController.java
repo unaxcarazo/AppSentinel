@@ -1,8 +1,5 @@
 package org.appsentinel.infrastructure.adapter.in.gui.controller;
 
-import java.awt.Desktop;
-import java.io.File;
-import java.io.IOException;
 import java.net.URL;
 import java.time.LocalDate;
 import java.util.List;
@@ -25,7 +22,6 @@ import javafx.scene.layout.VBox;
 import org.appsentinel.domain.model.Registro;
 import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 import javafx.fxml.Initializable;
-import javafx.scene.control.Button;
 import javafx.scene.control.ScrollPane;
 import org.appsentinel.infrastructure.bootstrap.AppContext;
 
@@ -68,12 +64,7 @@ public class DashboardController implements Initializable, Controllable {
     private Label lblCount;
     @FXML
     private Label lblScorePercent;
-    @FXML
-    private Button btnAtras;
-    @FXML
-    private Button btnAdelante;
-    @FXML
-    private Label lblFecha;
+
     @FXML
     private Label lblScoreMessage;
     @FXML
@@ -145,17 +136,6 @@ public class DashboardController implements Initializable, Controllable {
 
         this.uiScheduler.scheduleAtFixedRate(this::actualizarVistaSegura, 5, 5, TimeUnit.SECONDS);
 
-        btnAtras.setOnAction(event -> {
-            fechaConsultada = fechaConsultada.minusDays(1);
-            actualizarPantallaPorFecha();
-        });
-
-        btnAdelante.setOnAction(event -> {
-            if (fechaConsultada.isBefore(LocalDate.now())) {
-                fechaConsultada = fechaConsultada.plusDays(1);
-                actualizarPantallaPorFecha();
-            }
-        });
     }
 
     @Override
@@ -339,35 +319,6 @@ public class DashboardController implements Initializable, Controllable {
         return String.format("%02dh %02dm", horas, minutes);
     }
 
-    private void actualizarPantallaPorFecha() {
-        if (lblFecha == null) {
-            return;
-        }
-
-        if (fechaConsultada.equals(LocalDate.now())) {
-            lblFecha.setText("Hoy");
-        } else if (fechaConsultada.equals(LocalDate.now().minusDays(1))) {
-            lblFecha.setText("Ayer");
-        } else {
-            java.time.format.DateTimeFormatter formatter
-                    = java.time.format.DateTimeFormatter.ofPattern("dd MMM, yyyy");
-            lblFecha.setText(fechaConsultada.format(formatter));
-        }
-
-        if (repo != null && usuarioActual != null) {
-            List<Registro> registrosDelDia = repo.findByUsuarioAndFecha(usuarioActual, fechaConsultada);
-
-            List<Registro> topTrabajo = agruparYOrdenar(registrosDelDia, "PRODUCTIVO");
-            List<Registro> topDistracciones = agruparYOrdenar(registrosDelDia, "DISTRACCION");
-
-            actualizarCards(registrosDelDia);
-            actualizarRankingTrabajo(topTrabajo);
-            actualizarRankingDistracciones(topDistracciones);
-            actualizarGraficoReal(registrosDelDia);
-            updateProductivityScore(registrosDelDia);
-        }
-    }
-
     /**
      * Agrupa registros por nombre de actividad, suma duraciones y devuelve el
      * top 5 ordenado de mayor a menor para la categoría indicada.
@@ -437,16 +388,13 @@ public class DashboardController implements Initializable, Controllable {
                 continue;
             }
 
-            // 1. LIMPIEZA DE TEXTO UNIFICADA (Evita fallos de mayúsculas/tildes)
-            String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase()
-                    .replace("Á", "A").replace("É", "E")
-                    .replace("Í", "I").replace("Ó", "O")
-                    .replace("Ú", "U") : "";
+            // Obtener la categoría en mayúsculas tal y como viene de la base de datos
+            String cat = r.getCategoria() != null ? r.getCategoria().trim().toUpperCase() : "";
 
-            // 2. FILTRADO SEGURO (Asegúrate de usar los mismos nombres que en tus tarjetas de arriba)
+            // Comparación directa con tus cadenas exactas sin tildes
             if ("PRODUCTIVO".equals(cat) || "TRABAJO".equals(cat)) {
                 minutosProductivoPorHora[hora] += minutes;
-            } else if ("DISTRACCION".equals(cat) || cat.contains("DISTRA")) {
+            } else if ("DISTRACCION".equals(cat)) {
                 minutosDistraccionPorHora[hora] += minutes;
             }
         }
@@ -456,8 +404,6 @@ public class DashboardController implements Initializable, Controllable {
             return;
         }
 
-        // 3. CONTROL DE HORA ACTUAL (¡Ojo! Solo aplicable si los registros son de HOY)
-        // Si implementas histórico de días, añade una condición aquí para comprobar si es hoy.
         int horaActual = java.time.LocalTime.now().getHour();
         if (maxHora < horaActual) {
             maxHora = horaActual;
@@ -485,7 +431,7 @@ public class DashboardController implements Initializable, Controllable {
             seriesDist.getData().add(new XYChart.Data<>(horaLabel, tDist));
         }
 
-        final double topeY = (maxMinutos > 0) ? Math.ceil(maxMinutos / 30.0) * 30.0 : 30.0;
+        final double topeY = (maxMinutos > 0) ? Math.ceil(maxMinutos / 20.0) * 20.0 : 20.0;
 
         Platform.runLater(() -> {
             barChartActivity.setAnimated(false);
@@ -500,7 +446,7 @@ public class DashboardController implements Initializable, Controllable {
                 yAxis.setAutoRanging(false);
                 yAxis.setLowerBound(0);
                 yAxis.setUpperBound(topeY);
-                yAxis.setTickUnit(30);
+                yAxis.setTickUnit(20);
             }
 
             barChartActivity.getData().addAll(seriesWork, seriesDist);
@@ -514,6 +460,7 @@ public class DashboardController implements Initializable, Controllable {
             lblScorePercent.setText(porcentajeFinal + "%");
 
             if (lblScoreMessage != null) {
+                // Limpieza de clases previas para evitar acumulación de colores
                 lblScoreMessage.getStyleClass().removeAll(
                         "score-msg-excellent", "score-msg-good",
                         "score-msg-warning", "score-msg-danger", "score-msg-nodata");

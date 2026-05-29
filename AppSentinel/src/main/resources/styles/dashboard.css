@@ -22,9 +22,6 @@
     -fx-border-radius: 15;
 }
 
-.date-text, .date-icon, .kpi-stat-positive{
-    -fx-text-fill: #FFFFFF;
-}
 
 /* ----------- TEXTOS Y CABECERAS ----------- */
 .dashboard-main-title {
@@ -202,34 +199,15 @@
 /* ----------- ESTADOS DEL MENSAJE DE SCORE ----------- */
 /* Movidos desde el controlador Java — cada estado tiene su propia clase */
 
-.score-msg-excellent {
-    -fx-text-fill: #00FF7F;
-    -fx-font-weight: bold;
-}
-
-.score-msg-good {
-    -fx-text-fill: #FFA500;
-    -fx-font-weight: bold;
-}
-
-.score-msg-warning {
-    -fx-text-fill: #FFA500;
-    -fx-font-weight: bold;
-}
-
-.score-msg-danger {
-    -fx-text-fill: #F00C26;
-    -fx-font-weight: bold;
-}
-
-.score-msg-nodata {
-    -fx-text-fill: #888888;
-    -fx-font-weight: bold;
-}
-
 /* Alias semántico existente (se mantiene por compatibilidad) */
 .status-text-excellent {
     -fx-text-fill: -color-verde-status;
     -fx-font-size: 12px;
     -fx-font-weight: bold;
 }
+
+.score-msg-excellent { -fx-text-fill: #00FFCC; } /* Verde brillante */
+.score-msg-good      { -fx-text-fill: #FFD700; } /* Amarillo (Gold) */
+.score-msg-warning   { -fx-text-fill: #FF9900; } /* Naranja */
+.score-msg-danger    { -fx-text-fill: #FF4500; } /* Naranja Rojizo (OrangeRed) */
+.score-msg-nodata    { -fx-text-fill: #FF0000; } /* Rojo */

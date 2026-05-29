@@ -105,16 +105,12 @@ public class TimeTrackingService implements MonitorPort, BrowserEventPort, FocoA
     // Puertos de entrada
     // -------------------------------------------------------------------------
     
-    //PRUEBAS FECHA ==================================
-    public List<Registro> obtenerRegistrosAndFecha(String usuario, LocalDate fecha) {
-        return this.repository.findByUsuarioAndFecha(usuario, fecha);
-    }
+    
     
     @Override
     public void reportarActividadSistema(String proceso, String titulo, int pid) {
         procesarActividad("SYS|" + proceso, proceso, detector.clasificar(proceso), titulo, -1, pid);
     }
-    // ===============================================
     
     @Override
 public void reportarEventoNavegador(String url, String titulo, int tabId) {

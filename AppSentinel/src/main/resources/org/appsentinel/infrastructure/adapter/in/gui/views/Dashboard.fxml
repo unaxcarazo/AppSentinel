@@ -29,15 +29,6 @@
                         <Label styleClass="dashboard-subtitle" text="Session metrics and performance overview." />
                     </VBox>
       
-                    
-                    <HBox alignment="CENTER" minWidth="-Infinity" spacing="10" styleClass="date-selector-container">
-                        <Button fx:id="btnAtras" styleClass="button-date-nav" text="&lt;" />
-                        <HBox alignment="CENTER" spacing="8" styleClass="date-display">
-                            <Label style="-fx-font-size: 14;" text="📅" styleClass="date-icon"/>
-                            <Label fx:id="lblFecha" styleClass="date-text" text="Hoy" />
-                        </HBox>
-                        <Button fx:id="btnAdelante" styleClass="button-date-nav" text="&gt;" />
-                    </HBox>
                 </HBox>
               
                 <HBox spacing="15">

@@ -6,7 +6,6 @@ import org.appsentinel.domain.port.out.RegistroRepositoryPort;
 import org.appsentinel.infrastructure.adapter.out.persistence.DatabaseConnection;
 
 import java.sql.*;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -139,7 +138,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             INSERT INTO registros_actividad
             (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
             VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT (usuario_sistema, nombre_actividad, categoria, DATE(fecha_registro))
+            ON CONFLICT (usuario_sistema, nombre_actividad, categoria, date_trunc('hour', fecha_registro))
             DO UPDATE SET
                 duracion_seg = registros_actividad.duracion_seg + EXCLUDED.duracion_seg,
                 fecha_registro = EXCLUDED.fecha_registro,
@@ -178,7 +177,7 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
             INSERT INTO registros_actividad
             (usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro)
             VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT (usuario_sistema, nombre_actividad, categoria, DATE(fecha_registro))
+            ON CONFLICT (usuario_sistema, nombre_actividad, categoria, date_trunc('hour', fecha_registro))
             DO UPDATE SET
                 duracion_seg = registros_actividad.duracion_seg + EXCLUDED.duracion_seg,
                 fecha_registro = EXCLUDED.fecha_registro,
@@ -458,57 +457,6 @@ public class PostgreSQLRepositoryAdapter implements RegistroRepositoryPort {
         }
 
         return historial;
-    }
-
-    //PRUEBAS FECHAS =====================================================
-    @Override
-    public List<Registro> findByUsuario(String usuario) {
-        List<Registro> registros = new ArrayList<>();
-        String sql = "SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro " +
-                 "FROM registros_actividad " +
-                 "WHERE usuario_sistema = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection(); // Usa tu clase de conexión real
-                 PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, usuario);
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    registros.add(mapearRegistro(rs));
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return registros;
-    }
-
-    @Override
-    public List<Registro> findByUsuarioAndFecha(String usuario, LocalDate fecha) {
-        List<Registro> registros = new ArrayList<>();
-        // Usamos java.sql.Date para pasar el LocalDate a la query de PostgreSQL
-        String sql = "SELECT id, usuario_sistema, nombre_actividad, categoria, detalle, duracion_seg, fecha_registro " +
-             "FROM registros_actividad " +
-             "WHERE usuario_sistema = ? AND CAST(fecha_registro AS DATE) = ?";
-
-        try (Connection conn = DatabaseConnection.getConnection(); 
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            stmt.setString(1, usuario);
-            stmt.setDate(2, java.sql.Date.valueOf(fecha));
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    // Aquí usas la misma lógica que ya tienes en tu método antiguo
-                    // para mapear el ResultSet a tu objeto Registro y añadirlo a la lista
-                    registros.add(mapearRegistro(rs));
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace(); // O tu sistema de logs habitual
-        }
-        return registros;
     }
 
     // -------------------------------------------------------------------------
